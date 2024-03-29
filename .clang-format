@@ -1,9 +1,10 @@
-﻿---
+---
 AlignAfterOpenBracket: Align
 AlignOperands: 'true'
 AllowShortBlocksOnASingleLine: 'false'
 AllowShortIfStatementsOnASingleLine: 'true'
 AllowShortLoopsOnASingleLine: 'true'
+AllowShortFunctionsOnASingleLine: Empty
 AlwaysBreakTemplateDeclarations: 'true'
 BinPackParameters: 'true'
 BreakBeforeBraces: Attach
