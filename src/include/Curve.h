@@ -1,11 +1,20 @@
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/fwd.hpp"
 #include "glm/geometric.hpp"
 #include "glm/glm.hpp"
+#include "glm/matrix.hpp"
 #include "polyscope/curve_network.h"
 #include "polyscope/polyscope.h"
+#include "polyscope/surface_mesh.h"
+#include "polyscope/utilities.h"
+#include <Eigen/Sparse>
+#include <cmath>
 #include <cstddef>
+#include <iostream>
+#include <mach/task_info.h>
+#include <numeric>
 #include <ostream>
 #include <vector>
-#include <Eigen/Sparse>
 
 using namespace polyscope;
 class Curve {
@@ -20,22 +29,24 @@ class Curve {
             controlpoints.push_back({cos(theta), sin(theta), theta / 10});
         }
         for (size_t i = 0; i < controlpoints.size() - 1; i++) {
-            curveEdges.push_back({i, i + 1});
+            curveEdgesId.push_back({i, i + 1});
+            curveEdges.push_back(controlpoints[i + 1] - controlpoints[i]);
         }
 
-        curve = registerCurveNetwork("Sprial", controlpoints, curveEdges);
+        curve = registerCurveNetwork("Sprial", controlpoints, curveEdgesId);
 
-        gen_bishop();   
-        init_twist();
-        gen_frenet();
+        arc_length_parameterization();
+        gen_bishop_0();
+        gen_vertex_weight();
 
-        cal_trun_angles();
+        init_material_frame();
+        gen_twist_angle();
+
         cal_curvature();
-
         cal_darboux();
-        cal_voroni_region_length();
-        cal_bending_energy();
-        cal_twisting_energy();
+        cal_bending_force();
+
+        cal_twisting_force();
     }
 
     void animate() {
@@ -45,196 +56,217 @@ class Curve {
             if (pt.z < 0 || pt.z > 3) increment = -increment; // Reverse direction when reaching limits
         }
         curve->updateNodePositions(controlpoints);
-
-        
     }
 
-    void gen_bishop() {
-        tangent_on_edges.resize(curveEdges.size());
-        normal_on_edges.resize(curveEdges.size());
-        binormal_on_edges.resize(curveEdges.size());
+    void arc_length_parameterization() {
 
-        for (size_t iE = 0; iE < curveEdges.size(); iE++) {
-            size_t i0 = curveEdges[iE][0];
-            size_t i1 = curveEdges[iE][1];
+        arc_length.resize(curveEdgesId.size());
+        arc_length[0] = 0;
+        auto sum = 0.0;
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            sum += glm::length(curveEdges[i]);
+        }
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            arc_length[i] = arc_length[i - 1] + glm::length(curveEdges[i]) / sum;
+        }
+        curve->addEdgeScalarQuantity("arc length", arc_length);
+    }
+    void gen_bishop_0() {
+
+        point reference = point(0, 0, 1);
+        tangent_on_edges.resize(curveEdgesId.size());
+        normal_on_edges.resize(curveEdgesId.size());
+        binormal_on_edges.resize(curveEdgesId.size());
+
+        for (size_t iE = 0; iE < curveEdgesId.size(); iE++) {
+            size_t i0 = curveEdgesId[iE][0];
+            size_t i1 = curveEdgesId[iE][1];
             tangent_on_edges[iE] = glm::normalize(controlpoints[i1] - controlpoints[i0]);
         }
         curve->addEdgeVectorQuantity("tangent on edges", tangent_on_edges);
-        for (size_t i = 1; i < curveEdges.size(); i++) {
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
             point d_tangent = tangent_on_edges[i] - tangent_on_edges[i - 1];
             normal_on_edges[i] = glm::normalize(d_tangent);
         }
+        normal_on_edges[0] = glm::normalize(glm::cross(reference, tangent_on_edges[0]));
         curve->addEdgeVectorQuantity("normal on edges", normal_on_edges);
 
-        for (size_t i = 0; i < curveEdges.size(); i++) {
-            binormal_on_edges[i] = glm::cross(tangent_on_edges[i], normal_on_edges[i]);
+        for (size_t i = 0; i < curveEdgesId.size(); i++) {
+            binormal_on_edges[i] = glm::normalize(glm::cross(tangent_on_edges[i], normal_on_edges[i]));
         }
         curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
     }
 
-    void init_twist() {
-        twist_angles.clear();
-        double step = (4 * M_PI) / curveEdges.size();
-        for (size_t i = 0; i < curveEdges.size(); ++i) {
-            twist_angles.push_back(i * step);
+    void gen_parallel_transport() {
+        parallel_transport.resize(controlpoints.size());
+        turn_angles.resize(controlpoints.size());
+
+        for (size_t i = 1; i < controlpoints.size(); i++) {
+            auto prev_tan = tangent_on_edges[i - 1];
+            point next_tan = tangent_on_edges[(i) % tangent_on_edges.size()];
+
+            glm::vec3 axis = glm::cross(prev_tan, next_tan);
+            if (glm::length(axis) > 0.0001) {
+                axis = glm::normalize(axis);
+                float angle = acos(glm::dot(glm::normalize(prev_tan), glm::normalize(next_tan)));
+                turn_angles[i] = angle;
+                glm::mat3 rotationMatrix = glm::rotate(glm::mat4(1.0f), angle, axis);
+                parallel_transport[i] = rotationMatrix;
+            } else {
+                parallel_transport[i] = glm::mat3(1.0f);
+            }
         }
-        curve->addEdgeScalarQuantity("twist angles", twist_angles);
+        curve->addNodeScalarQuantity("turning angles", turn_angles);
     }
 
-    void gen_frenet() {
-        rotated_normal_on_edges.resize(curveEdges.size());
-        rotated_binormal_on_edges.resize(curveEdges.size());
-        for (size_t i = 0; i < curveEdges.size(); i++) {
-            float theta = twist_angles[i];
-            rotated_normal_on_edges[i] =
-                glm::normalize(normal_on_edges[i] * cos(theta) + binormal_on_edges[i] * sin(theta));
-            rotated_binormal_on_edges[i] =
-                glm::normalize(-normal_on_edges[i] * sin(theta) + binormal_on_edges[i] * cos(theta));
-        }
-        curve->addEdgeVectorQuantity("rotated normal on edges", rotated_normal_on_edges);
-        curve->addEdgeVectorQuantity("rotated binormal on edges", rotated_binormal_on_edges);
+    void init_material_frame() {
+        material_u.resize(curveEdgesId.size());
+        material_v.resize(curveEdgesId.size());
     }
 
-    void cal_trun_angles() {
-        turn_angles.resize(curveEdges.size());
-        for (size_t i = 1; i < curveEdges.size(); i++) {
-            turn_angles[i] = glm::acos(glm::dot(tangent_on_edges[i], tangent_on_edges[i - 1]));
+    void gen_twist_angle() {
+        gen_parallel_transport();
+
+        twist_angles.resize(curveEdgesId.size());
+        twist_angles[0] = PI;
+        glm::mat3 matrix = glm::rotate(glm::mat4(1.0f), twist_angles[0], tangent_on_edges[0]);
+        material_u[0] = glm::normalize(matrix * binormal_on_edges[0]);
+        material_v[0] = glm::normalize(glm::cross(tangent_on_edges[0], material_u[0]));
+
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            material_u[i] = glm::normalize(parallel_transport[i] * material_u[i - 1]);
+            twist_angles[i] = glm::acos(glm::dot(material_u[i], binormal_on_edges[i]));
+            material_v[i] = glm::normalize(glm::cross(tangent_on_edges[i], material_u[i]));
         }
-        curve->addEdgeScalarQuantity("turn angles", turn_angles);
+        curve->addEdgeScalarQuantity("twisting angle", twist_angles);
+        curve->addEdgeVectorQuantity("material_v", material_v);
+        curve->addEdgeVectorQuantity("material_u", material_u);
     }
+
 
     void cal_curvature() {
-        curvature.resize(curveEdges.size());
-        for (size_t i = 0; i < curveEdges.size(); i++) {
+        curvature.resize(curveEdgesId.size());
+        for (size_t i = 0; i < curveEdgesId.size(); i++) {
             curvature[i] = 2 * glm::tan(turn_angles[i] / 2);
         }
         curve->addEdgeScalarQuantity("curvature", curvature);
     }
 
-    void cal_voroni_region_length() {
-        voroni_region_length.resize(curveEdges.size());
-        voroni_region_length[0] = 0;
-        for (size_t i = 1; i < curveEdges.size()-1; i++) {
-            voroni_region_length[i] =
-                0.5 * (glm::length(controlpoints[curveEdges[i][0]] - controlpoints[curveEdges[i][1]]) +
-                       glm::length(controlpoints[curveEdges[i - 1][0]] - controlpoints[curveEdges[i - 1][1]]));
+    void gen_vertex_weight() {
+        vertex_weight.resize(controlpoints.size());
+        vertex_weight[0] = 0.5 * (glm::length(curveEdges[0]));
+        vertex_weight[controlpoints.size() - 1] = 0.5 * (glm::length(curveEdges[curveEdges.size() - 1]));
+        for (size_t i = 1; i < controlpoints.size() - 1; i++) {
+            vertex_weight[i] = 0.5 * (glm::length(curveEdges[i - 1]) + glm::length(curveEdges[i]));
         }
-        curve->addEdgeScalarQuantity("voroni region length", voroni_region_length);
+
+        curve->addNodeScalarQuantity("vertex_weight", vertex_weight);
     }
 
     void cal_darboux() {
-        darboux.resize(curveEdges.size());
-        for (size_t i = 1; i < curveEdges.size(); i++) {
-            auto edge = controlpoints[curveEdges[i][1]] - controlpoints[curveEdges[i - 1][0]];
-            auto egde_prev = controlpoints[curveEdges[i - 1][1]] - controlpoints[curveEdges[i - 1][0]];
-            auto deo = 2.f * glm::cross(edge, egde_prev);
-            float base = glm::dot(edge, egde_prev) + glm::length(edge) * glm::length(egde_prev);
-            darboux[i] = deo / base;
+        darboux.resize(curveEdgesId.size());
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            darboux[i] = curvature[i] * binormal_on_edges[i];
         }
         curve->addEdgeVectorQuantity("darboux", darboux);
     }
 
-
-    void cal_bending_energy() {
-        bending_energy.resize(curveEdges.size());
-
-        for (size_t i = 1; i < curveEdges.size(); i++) {
-            bending_energy[i] = bending_energy[i - 1] + 0.5 * glm::length(darboux[i]) / voroni_region_length[i];
+    void cal_bending_force() {
+        bending_force.resize(curveEdgesId.size());
+        for (size_t i = 1; i < curveEdgesId.size() - 1; i++) {
+            auto cur_edge = curveEdges[i];
+            auto next_edge = curveEdges[i + 1];
+            float co =
+                2 / (vertex_weight[i] * glm::length(cur_edge) * glm::length(next_edge) + glm::dot(cur_edge, next_edge));
+            for (size_t j = 0; j < curveEdgesId.size() - 1; j++) {
+                if (j == i + 1) {
+                    bending_force[i] +=
+                        glm::cross(-1.f * next_edge, darboux[j]) + glm::dot(darboux[j], next_edge) * darboux[j];
+                } else if (j == i) {
+                    bending_force[i] +=
+                        glm::cross(-1.f * cur_edge, darboux[j]) + glm::dot(darboux[j], cur_edge) * darboux[j] +
+                        glm::cross(-1.f * next_edge, darboux[j]) + glm::dot(darboux[j], next_edge) * darboux[j];
+                } else if (j == i - 1) {
+                    bending_force[i] +=
+                        glm::cross(-1.f * cur_edge, darboux[j]) + glm::dot(darboux[j], cur_edge) * darboux[j];
+                } else {
+                    continue;
+                }
+            }
+            bending_force[i] *= co;
+            bending_force[i] *= -2;
         }
-        curve->addEdgeScalarQuantity("bending energy", bending_energy);
+        curve->addEdgeVectorQuantity("bending force", bending_force);
     }
 
-    void cal_twisting_energy() {
-        twisting_energy.resize(curveEdges.size());
-        for (size_t i = 1; i < curveEdges.size(); i++) {
-            auto diff_twist = twist_angles[i] - twist_angles[i - 1];
-            twisting_energy[i] = twisting_energy[i - 1] + glm::pow(diff_twist,2) / voroni_region_length[i];
+    void cal_twisting_force() {
+        twisting_force.resize(curveEdgesId.size());
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
+            auto d_twist = twist_angles[i] - twist_angles[0];
+            auto delta_prev_Psi = 0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
+            auto delta_next_Psi = -0.5f * darboux[i] / glm::length(curveEdges[i]);
+            auto delta_Psi = -(delta_prev_Psi + delta_next_Psi);
+            twisting_force[i] = d_twist / L * delta_Psi;
         }
-        curve->addEdgeScalarQuantity("twisting energy", twisting_energy);
+        curve->addEdgeVectorQuantity("twisting force", twisting_force);
     }
 
-    void init_M() {
-        size_t n = 3 * curveEdges.size() +2 ;
-        M.resize(n, n);
+    void tst_gd() {
+        float lr = 0.01; 
+        int iterations = 10; 
 
-        std::vector<Eigen::Triplet<double>> tripletList_M ;
-        for (size_t i = 0; i < curveEdges.size(); i++) {
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i, 3 * i, 1));
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i, 3 * i + 1, 0));
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i, 3 * i + 2, 0));
-
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i + 1, 3 * i, 0));
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i + 1, 3 * i + 1, 1));
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i + 1, 3 * i + 2, 0));
-
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i + 2, 3 * i, 0));
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i + 2, 3 * i + 1, 0));
-            tripletList_M.push_back(Eigen::Triplet<double>(3 * i + 2, 3 * i + 2, 1));
+        for (int iter = 0; iter < iterations; iter++) {
+            for(size_t i = 0; i < twist_angles.size(); i++){
+                float gradient = 2 * twist_angles[i];
+                twist_angles[i] -= lr * gradient;
+            }
+            updatematerial_frame();
+            
+            curve->addEdgeScalarQuantity("twisting angle", twist_angles);
+            float loss = std::accumulate(twist_angles.begin(), twist_angles.end(), 0.0f,
+                                        [](float acc, float angle) { return acc + angle * angle; });
+            std::cout << "Iteration " << iter << ", Loss: " << loss << std::endl;
         }
-        tripletList_M.push_back(Eigen::Triplet<double>(3 * curveEdges.size(), 3 * curveEdges.size(), 1));
     }
 
-    void solve_x () {
-        Eigen::VectorXd x;
-        Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
-        solver.compute(M);
-        x = solver.solve(Eigen::VectorXd::Zero(M.rows()));
-    }
-
-    void update() {
-        curve->updateNodePositions(controlpoints);
-    }
-
-    void cal_nabla_psi() {
-        nabla_psi.resize(curveEdges.size());
-        for (size_t i = 1; i < curveEdges.size(); i++) {
-            auto prev_edge_length = glm::length(controlpoints[curveEdges[i - 1][0]] - controlpoints[curveEdges[i - 1][1]]);
-            auto next_egde_length = glm::length(controlpoints[curveEdges[i][0]] - controlpoints[curveEdges[i][1]]);
-            auto prev_nabla_psi = 0.5f *darboux[i - 1] / prev_edge_length;
-            auto next_nabla_psi = -0.5f *darboux[i] / next_egde_length;
-
-            auto cur_nabla_psi = -(prev_nabla_psi + next_nabla_psi);
+    void updatematerial_frame() {
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            glm::mat3 rot = glm::rotate(glm::mat4(1.0f), twist_angles[i], tangent_on_edges[i]);
+            material_u[i] = rot * binormal_on_edges[i];
+            material_v[i] = rot * normal_on_edges[i];
         }
-        curve->addEdgeVectorQuantity("nabla psi", nabla_psi);
+        curve->addEdgeVectorQuantity("material_v", material_v);
+        curve->addEdgeVectorQuantity("material_u", material_u);
+
+
     }
 
-    void cal_nabla_Psi(){
-        nabla_Psi.resize(curveEdges.size());
-        nabla_Psi[0] = nabla_psi[0];
-        for (size_t i = 1; i < curveEdges.size(); i++) {
-            nabla_Psi[i] += nabla_Psi[i - 1] + nabla_psi[i];
-        }
-        curve->addEdgeVectorQuantity("nabla Psi", nabla_Psi);
-    }
 
   private:
     std::vector<point> controlpoints;
-    std::vector<std::vector<size_t>> curveEdges;
+    std::vector<std::vector<size_t>> curveEdgesId;
+    std::vector<point> curveEdges;
     CurveNetwork* curve;
+
+    std::vector<double> arc_length;
 
     std::vector<point> tangent_on_edges;
     std::vector<point> normal_on_edges;
     std::vector<point> binormal_on_edges;
 
-    std::vector<double> twist_angles;
-    std::vector<point> rotated_normal_on_edges;
-    std::vector<point> rotated_binormal_on_edges;
+
+    std::vector<glm::mat3> parallel_transport;
+    std::vector<float> twist_angles;
+    std::vector<point> material_v;
+    std::vector<point> material_u;
 
 
     std::vector<float> turn_angles;
-    std::vector<double> curvature;
+    std::vector<float> curvature;
 
     std::vector<point> darboux;
-    std::vector<double> voroni_region_length;
-    std::vector<double> bending_energy;
-    std::vector<double> twisting_energy;
-
-
-
-    std::vector<point> nabla_psi;
-    std::vector<point> nabla_Psi;
-
-
-
-    Eigen::SparseMatrix<double> M;
+    std::vector<double> vertex_weight;
+    std::vector<point> bending_force;
+    std::vector<point> twisting_force;
 };

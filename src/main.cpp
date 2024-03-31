@@ -3,9 +3,16 @@
 #include "imgui.h"
 
 
+
+Curve curve;
+
+
 void DERcallback(){
     ImGui::Begin("DERcallback");
     ImGui::Text("Hello, world!");
+    if(ImGui::Button("Button")){
+        curve.tst_gd();
+    }
     ImGui::End();
 }
 
@@ -15,10 +22,11 @@ int main() {
     polyscope::view::setFrontDir(polyscope::FrontDir::NegYFront);
    
     polyscope::init();
-    Curve curve;
+    
     curve.init();
 
-    // polyscope::state::userCallback =  [&]() {
+    polyscope::state::userCallback = DERcallback;
+    // [&]() {
     //     curve.animate();
     // };
 
