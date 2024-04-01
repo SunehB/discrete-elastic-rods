@@ -9,7 +9,7 @@ Curve curve;
 
 void DERcallback(){
     ImGui::Begin("DERcallback");
-    ImGui::Text("Hello, world!");
+    ImGui::Text("Hello, wsssssorld!");
     if(ImGui::Button("Button")){
         curve.tst_gd_bend();
     }
