@@ -11,7 +11,7 @@ void DERcallback(){
     ImGui::Begin("DERcallback");
     ImGui::Text("Hello, world!");
     if(ImGui::Button("Button")){
-        curve.tst_gd();
+        curve.tst_gd_bend();
     }
     ImGui::End();
 }

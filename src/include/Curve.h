@@ -1,13 +1,4 @@
-#include "glm/ext/matrix_transform.hpp"
-#include "glm/fwd.hpp"
-#include "glm/geometric.hpp"
-#include "glm/glm.hpp"
-#include "glm/matrix.hpp"
 #include "polyscope/curve_network.h"
-#include "polyscope/polyscope.h"
-#include "polyscope/surface_mesh.h"
-#include "polyscope/utilities.h"
-#include <Eigen/Sparse>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -33,13 +24,25 @@ class Curve {
             curveEdges.push_back(controlpoints[i + 1] - controlpoints[i]);
         }
 
+        tangent_on_edges.resize(curveEdgesId.size());
+        normal_on_edges.resize(curveEdgesId.size());
+        binormal_on_edges.resize(curveEdgesId.size());
+
+        parallel_transport.resize(controlpoints.size());
+        turn_angles.resize(controlpoints.size());
+        arc_length.resize(curveEdgesId.size());
+
+        material_u.resize(curveEdgesId.size());
+        material_v.resize(curveEdgesId.size());
+
+        acceleration.resize(controlpoints.size());
+
         curve = registerCurveNetwork("Sprial", controlpoints, curveEdgesId);
 
         arc_length_parameterization();
         gen_bishop_0();
         gen_vertex_weight();
 
-        init_material_frame();
         gen_twist_angle();
 
         cal_curvature();
@@ -47,6 +50,8 @@ class Curve {
         cal_bending_force();
 
         cal_twisting_force();
+
+        twisting_force.resize(curveEdgesId.size());
     }
 
     void animate() {
@@ -60,7 +65,7 @@ class Curve {
 
     void arc_length_parameterization() {
 
-        arc_length.resize(curveEdgesId.size());
+       
         arc_length[0] = 0;
         auto sum = 0.0;
         for (size_t i = 1; i < curveEdgesId.size(); i++) {
@@ -70,13 +75,11 @@ class Curve {
             arc_length[i] = arc_length[i - 1] + glm::length(curveEdges[i]) / sum;
         }
         curve->addEdgeScalarQuantity("arc length", arc_length);
-    }
+    }  
+
+
     void gen_bishop_0() {
 
-        point reference = point(0, 0, 1);
-        tangent_on_edges.resize(curveEdgesId.size());
-        normal_on_edges.resize(curveEdgesId.size());
-        binormal_on_edges.resize(curveEdgesId.size());
 
         for (size_t iE = 0; iE < curveEdgesId.size(); iE++) {
             size_t i0 = curveEdgesId[iE][0];
@@ -97,9 +100,30 @@ class Curve {
         curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
     }
 
+    void update_bishop(){
+
+        for (size_t iE = 0; iE < curveEdgesId.size(); iE++) {
+            size_t i0 = curveEdgesId[iE][0];
+            size_t i1 = curveEdgesId[iE][1];
+            tangent_on_edges[iE] = glm::normalize(controlpoints[i1] - controlpoints[i0]);
+        }
+        curve->addEdgeVectorQuantity("tangent on edges", tangent_on_edges);
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            point d_tangent = tangent_on_edges[i] - tangent_on_edges[i - 1];
+            normal_on_edges[i] = glm::normalize(d_tangent);
+        }
+        normal_on_edges[0] = glm::normalize(glm::cross(reference, tangent_on_edges[0]));
+        curve->addEdgeVectorQuantity("normal on edges", normal_on_edges);
+
+        for (size_t i = 0; i < curveEdgesId.size(); i++) {
+            binormal_on_edges[i] = glm::normalize(glm::cross(tangent_on_edges[i], normal_on_edges[i]));
+        }
+        curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
+    
+    }
+
     void gen_parallel_transport() {
-        parallel_transport.resize(controlpoints.size());
-        turn_angles.resize(controlpoints.size());
+       
 
         for (size_t i = 1; i < controlpoints.size(); i++) {
             auto prev_tan = tangent_on_edges[i - 1];
@@ -117,11 +141,6 @@ class Curve {
             }
         }
         curve->addNodeScalarQuantity("turning angles", turn_angles);
-    }
-
-    void init_material_frame() {
-        material_u.resize(curveEdgesId.size());
-        material_v.resize(curveEdgesId.size());
     }
 
     void gen_twist_angle() {
@@ -199,35 +218,78 @@ class Curve {
         curve->addEdgeVectorQuantity("bending force", bending_force);
     }
 
+    // void cal_twisting_force() {
+    //     twisting_force.resize(curveEdgesId.size());
+    //     for (size_t i = 1; i < curveEdgesId.size(); i++) {
+    //         float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
+    //         auto d_twist = twist_angles[i] - twist_angles[0];
+    //         auto delta_prev_Psi = 0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
+    //         auto delta_next_Psi = -0.5f * darboux[i] / glm::length(curveEdges[i]);
+    //         auto delta_Psi = -(delta_prev_Psi + delta_next_Psi);
+    //         twisting_force[i] = d_twist / L * delta_Psi;
+    //     }
+    //     curve->addEdgeVectorQuantity("twisting force", twisting_force);
+    // }
+
     void cal_twisting_force() {
-        twisting_force.resize(curveEdgesId.size());
+        
         for (size_t i = 1; i < curveEdgesId.size(); i++) {
             float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
             auto d_twist = twist_angles[i] - twist_angles[0];
-            auto delta_prev_Psi = 0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
-            auto delta_next_Psi = -0.5f * darboux[i] / glm::length(curveEdges[i]);
-            auto delta_Psi = -(delta_prev_Psi + delta_next_Psi);
-            twisting_force[i] = d_twist / L * delta_Psi;
+            twisting_force[i] = 2 * d_twist / L;
         }
-        curve->addEdgeVectorQuantity("twisting force", twisting_force);
+        curve->addEdgeScalarQuantity("twisting force", twisting_force);
     }
 
     void tst_gd() {
-        float lr = 0.01; 
-        int iterations = 10; 
+        float lr = 0.01;
+        int iterations = 10;
 
         for (int iter = 0; iter < iterations; iter++) {
-            for(size_t i = 0; i < twist_angles.size(); i++){
+            for (size_t i = 0; i < twist_angles.size(); i++) {
                 float gradient = 2 * twist_angles[i];
                 twist_angles[i] -= lr * gradient;
             }
             updatematerial_frame();
-            
+
             curve->addEdgeScalarQuantity("twisting angle", twist_angles);
             float loss = std::accumulate(twist_angles.begin(), twist_angles.end(), 0.0f,
-                                        [](float acc, float angle) { return acc + angle * angle; });
+                                         [](float acc, float angle) { return acc + angle * angle; });
             std::cout << "Iteration " << iter << ", Loss: " << loss << std::endl;
         }
+    }
+
+    void tst_gd_bend() {
+        
+        float v0 = 0.0;
+        float lr = 0.01;
+        float dt = 0.01;
+
+        for(size_t iter = 0; iter < 1; iter++){
+            for (size_t i = 1; i < controlpoints.size()-1; i++) {
+                acceleration[i] = lr * bending_force[i]/vertex_weight[i]; 
+                point new_x =  controlpoints[i] + v0 * dt + 0.5f * acceleration[i] * dt * dt;
+                controlpoints[i] = new_x;
+            }
+            curve->updateNodePositions(controlpoints);
+            update_bishop();
+            gen_vertex_weight();
+            gen_twist_angle();
+            cal_curvature();
+            cal_darboux();
+            cal_bending_force();
+
+        } 
+    }
+
+    void updatupdate_all() {
+        for (size_t i = 1; i < curveEdgesId.size(); i++) {
+            glm::mat3 rot = glm::rotate(glm::mat4(1.0f), twist_angles[i], tangent_on_edges[i]);
+            material_u[i] = rot * binormal_on_edges[i];
+            material_v[i] = rot * normal_on_edges[i];
+        }
+        curve->addEdgeVectorQuantity("material_v", material_v);
+        curve->addEdgeVectorQuantity("material_u", material_u);
     }
 
     void updatematerial_frame() {
@@ -238,12 +300,14 @@ class Curve {
         }
         curve->addEdgeVectorQuantity("material_v", material_v);
         curve->addEdgeVectorQuantity("material_u", material_u);
-
-
     }
 
 
   private:
+
+    const point reference = point(0, 0, 1);
+
+
     std::vector<point> controlpoints;
     std::vector<std::vector<size_t>> curveEdgesId;
     std::vector<point> curveEdges;
@@ -266,7 +330,9 @@ class Curve {
     std::vector<float> curvature;
 
     std::vector<point> darboux;
-    std::vector<double> vertex_weight;
+    std::vector<float> vertex_weight;
     std::vector<point> bending_force;
-    std::vector<point> twisting_force;
+    std::vector<float> twisting_force;
+
+    std::vector<point> acceleration;
 };

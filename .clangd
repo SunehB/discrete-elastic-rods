@@ -1,0 +1,6 @@
+Hover:
+  ShowAKA: Yes
+Diagnostics:
+  UnusedIncludes: Strict
+CompileFlags:
+  Add: [-Wno-implicit-function-declaration, -Wno-int-conversion, -ferror-limit=500,-Wunused-but-set-variable, -Wunused-includes]
