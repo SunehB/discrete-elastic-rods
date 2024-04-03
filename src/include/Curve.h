@@ -13,13 +13,10 @@ class Curve {
     using point = glm::vec3;
 
   public:
-    Curve(){
-
-
-    };  
+    Curve(){};
     ~Curve(){};
 
-    void resize_vectors(){
+    void resize_vectors() {
 
         edge_length.resize(num_edges);
         arc_length.resize(num_edges);
@@ -36,12 +33,11 @@ class Curve {
 
         velocity.resize(num_controlpoints);
         acceleration.resize(num_controlpoints);
-        bending_force.resize(num_edges);
-        twisting_force.resize(num_edges);
-
+        bending_force.resize(num_controlpoints);
+        twisting_force.resize(num_controlpoints);
     }
 
-    void init_straight_line(){
+    void init_straight_line() {
         for (int i = 0; i < 10; i++) {
             controlpoints.push_back({i, 1, 0});
         }
@@ -69,7 +65,6 @@ class Curve {
         for (size_t i = 0; i < num_controlpoints - 1; i++) {
             curveEdgesId.push_back({i, i + 1});
             curveEdges.push_back(controlpoints[i + 1] - controlpoints[i]);
-
         }
         curve = registerCurveNetwork("Sprial", controlpoints, curveEdgesId);
 
@@ -110,18 +105,22 @@ class Curve {
             tangent_on_edges[iE] = glm::normalize(controlpoints[i1] - controlpoints[i0]);
         }
         curve->addEdgeVectorQuantity("tangent on edges", tangent_on_edges);
+
+        normal_on_edges[0] = glm::normalize(glm::cross(reference, tangent_on_edges[0]));
         for (size_t i = 1; i < num_edges; i++) {
             point d_tangent = tangent_on_edges[i] - tangent_on_edges[i - 1];
-            normal_on_edges[i] = glm::normalize(d_tangent);
+            if (glm::length(d_tangent) > 1e-6) { // 非零向量
+                normal_on_edges[i] = glm::normalize(d_tangent);
+            } else { // 零向量，沿用前一条边的法线
+                normal_on_edges[i] = normal_on_edges[i - 1];
+            }
         }
-        normal_on_edges[0] = glm::normalize(glm::cross(reference, tangent_on_edges[0]));
         curve->addEdgeVectorQuantity("normal on edges", normal_on_edges);
 
         for (size_t i = 0; i < num_edges; i++) {
             binormal_on_edges[i] = glm::normalize(glm::cross(tangent_on_edges[i], normal_on_edges[i]));
         }
         curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
-
     }
 
     void calc_turn_angle() {
@@ -172,9 +171,6 @@ class Curve {
     }
 
 
-    
-
-
     void cal_curvature() {
 
         for (size_t i = 0; i < num_edges; i++) {
@@ -194,9 +190,9 @@ class Curve {
     }
 
     void cal_darboux() {
-        darboux.resize(num_edges);
+
         for (size_t i = 1; i < num_edges; i++) {
-            darboux[i] = curvature[i] * binormal_on_edges[i];
+            darboux[i] = curvature[i] * binormal_on_edges[i] + eps;
         }
         curve->addEdgeVectorQuantity("darboux", darboux);
     }
@@ -221,64 +217,40 @@ class Curve {
     }
 
     void cal_bending_force() {
-        bending_force.resize(num_edges);
-        float alpha = 1;
-        for (size_t i = 1; i < num_edges - 1; i++) {
+       
+        for (size_t i = 1; i < num_controlpoints - 1; i++) {
             auto cur_edge = curveEdges[i];
-            auto next_edge = curveEdges[i + 1];
-            float co =
-                2 * alpha / (vertex_weight[i] * ( glm::length(cur_edge) * glm::length(next_edge) + glm::dot(cur_edge, next_edge)));
-            std::cout << "co at edge" << i << "is" << co << std::endl;
-            for (size_t j = 0; j < num_edges - 1; j++) {
-                if (j == i + 1) {
-                    bending_force[i] +=
-                        glm::cross(-1.f * next_edge, darboux[j]) + glm::dot(darboux[j], next_edge) * darboux[j];
-                } else if (j == i) {
-                    bending_force[i] +=
-                        glm::cross(-1.f * cur_edge, darboux[j]) + glm::dot(darboux[j], cur_edge) * darboux[j] +
-                        glm::cross(-1.f * next_edge, darboux[j]) + glm::dot(darboux[j], next_edge) * darboux[j];
-                } else if (j == i - 1) {
-                    bending_force[i] +=
-                        glm::cross(-1.f * cur_edge, darboux[j]) + glm::dot(darboux[j], cur_edge) * darboux[j];
-                } else {
-                    continue;
-                }
+            auto prev_edge = curveEdges[i - 1];
+            float co = 2 / (vertex_weight[i] *
+                            (glm::length(cur_edge) * glm::length(prev_edge) + glm::dot(cur_edge, prev_edge)));
+            if (i != 1) {
+                bending_force[i] +=
+                    2.f * glm::cross(-1.f * cur_edge, darboux[i]) + glm::dot(darboux[i], cur_edge) * darboux[i];
+            }
+            if (i != num_controlpoints - 1) {
+                bending_force[i] +=
+                    2.f * glm::cross(-1.f * prev_edge, darboux[i]) - glm::dot(darboux[i], prev_edge) * darboux[i];
             }
             bending_force[i] *= co;
-            bending_force[i] *= -2;
         }
-        curve->addEdgeVectorQuantity("bending force", bending_force);
+        curve->addNodeVectorQuantity("bending force", bending_force);
     }
 
-    // void cal_twisting_force() {
-    //     twisting_force.resize(num_edges);
-    //     for (size_t i = 1; i < num_edges; i++) {
-    //         float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
-    //         auto d_twist = twist_angles[i] - twist_angles[0];
-    //         auto delta_prev_Psi = 0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
-    //         auto delta_next_Psi = -0.5f * darboux[i] / glm::length(curveEdges[i]);
-    //         auto delta_Psi = -(delta_prev_Psi + delta_next_Psi);
-    //         twisting_force[i] = d_twist / L * delta_Psi;
-    //     }
-    //     curve->addEdgeVectorQuantity("twisting force", twisting_force);
-    // }
 
     void cal_twisting_force() {
-
-        for (size_t i = 1; i < num_edges; i++) {
-            auto prevd = -0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
-            auto nextd = 0.5f * darboux[i] / glm::length(curveEdges[i]);
+        for (size_t i = 1; i < num_controlpoints - 1; i++) {
+            auto prevd = 0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
+            auto nextd = -0.5f * darboux[i] / glm::length(curveEdges[i]);
             float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
-            twisting_force[i] = 2 * totaltwist / L * point(1.,1.,1.);
+            twisting_force[i] = -1 * totaltwist * (nextd + prevd) / (L + eps);
         }
-        curve->addEdgeVectorQuantity("twisting force", twisting_force);
+        curve->addNodeVectorQuantity("twisting force", twisting_force);
     }
 
 
-    void adjusttwist(float newtwist){
+    void adjusttwist(float newtwist) {
         float totaltwist = newtwist;
-        cal_twisting_force();
-        
+        // cal_twisting_force();
     }
 
     void symEuler() {
@@ -362,9 +334,14 @@ class Curve {
   private:
     size_t num_controlpoints;
     size_t num_edges;
-    
+
+    float eps = 1e-6;
+
+    float alpha = 0.2;
+    float beta = 100;
+
     const point reference = point(0, 0, 1);
-    float totaltwist = PI;
+    float totaltwist = 100 * PI;
     float totallength;
 
     std::vector<point> controlpoints;
@@ -373,7 +350,7 @@ class Curve {
     std::vector<float> edge_length;
     CurveNetwork* curve;
 
-    std::vector<double> arc_length;
+    std::vector<float> arc_length;
 
     std::vector<point> tangent_on_edges;
     std::vector<point> normal_on_edges;
