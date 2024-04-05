@@ -2,10 +2,10 @@
 #include "polyscope/utilities.h"
 #include <cmath>
 #include <cstddef>
-#include <iostream>
+// #include <iostream>
 #include <mach/task_info.h>
 #include <numeric>
-#include <ostream>
+// #include <ostream>
 #include <vector>
 
 using namespace polyscope;
@@ -17,15 +17,14 @@ class Curve {
     ~Curve(){};
 
     void resize_vectors() {
-
         edge_length.resize(num_edges);
         arc_length.resize(num_edges);
         turn_angles.resize(num_controlpoints);
         tangent_on_edges.resize(num_edges);
         normal_on_edges.resize(num_edges);
         binormal_on_edges.resize(num_edges);
-        curvature.resize(num_edges);
-        darboux.resize(num_edges);
+        curvature.resize(num_controlpoints);
+        darboux.resize(num_controlpoints);
 
         twist_angles.resize(num_edges);
         material_u.resize(num_edges);
@@ -71,6 +70,27 @@ class Curve {
         resize_vectors();
     }
 
+    void initcurve() {
+        size_t nSamples = 100;
+        double dt = 0.01;
+        for (size_t i = 0; i < nSamples; ++i) {
+            double t = i * dt;
+            point p;
+            p.x = cos(2 * M_PI * t);
+            p.y = sin(2 * M_PI * t);
+            p.z = 0.3 * sin(4 * M_PI * t);
+            controlpoints.push_back(p);
+        }
+        num_controlpoints = nSamples;
+        num_edges = nSamples;
+        for (size_t i = 0; i < num_controlpoints; i++) {
+            curveEdgesId.push_back({i, (i + 1) % num_controlpoints});
+            curveEdges.push_back(controlpoints[(i + 1) % num_controlpoints] - controlpoints[i]);
+        }
+        curve = registerCurveNetwork("Sprial", controlpoints, curveEdgesId);
+        resize_vectors();
+    }
+
 
     void animate() {
         static float increment = 0.01f;
@@ -82,8 +102,14 @@ class Curve {
     }
 
     void arc_length_parameterization() {
-        arc_length[0] = 0;
 
+        arc_length.clear();
+        arc_length.resize(num_edges);
+        edge_length.clear();
+        edge_length.resize(num_edges);
+
+        arc_length[0] = 0;
+        totallength = 0;
         for (size_t i = 1; i < num_edges; i++) {
             totallength += glm::length(curveEdges[i]);
             edge_length[i] = glm::length(curveEdges[i]);
@@ -124,12 +150,14 @@ class Curve {
     }
 
     void calc_turn_angle() {
+        turn_angles.clear();
+        turn_angles.resize(num_controlpoints);
+
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
-            auto cur_edge = curveEdges[i];
-            auto prev_edge = curveEdges[i - 1];
-            auto angle = acos(glm::dot(glm::normalize(cur_edge), glm::normalize(prev_edge)));
-            turn_angles[i] = angle;
+            turn_angles[i] = acos(glm::dot(glm::normalize(curveEdges[i]), glm::normalize(curveEdges[i - 1])));
+            ;
         }
+        curve->addNodeScalarQuantity("turning angles", turn_angles);
     }
 
     // void gen_parallel_transport() {
@@ -172,15 +200,19 @@ class Curve {
 
 
     void cal_curvature() {
+        curvature.clear();
+        curvature.resize(num_controlpoints);
 
-        for (size_t i = 0; i < num_edges; i++) {
+        for (size_t i = 0; i < num_controlpoints; i++) {
             curvature[i] = 2 * glm::tan(turn_angles[i] / 2);
         }
-        curve->addEdgeScalarQuantity("curvature", curvature);
+        curve->addNodeScalarQuantity("curvature", curvature);
     }
 
     void gen_vertex_weight() {
+        vertex_weight.clear();
         vertex_weight.resize(num_controlpoints);
+
         vertex_weight[0] = 0.5 * (glm::length(curveEdges[0]));
         vertex_weight[num_controlpoints - 1] = 0.5 * (glm::length(curveEdges[curveEdges.size() - 1]));
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
@@ -190,24 +222,30 @@ class Curve {
     }
 
     void cal_darboux() {
+        darboux.clear();
+        darboux.resize(num_controlpoints);
 
-        for (size_t i = 1; i < num_edges; i++) {
-            darboux[i] = curvature[i] * binormal_on_edges[i] + eps;
+        for (size_t i = 1; i < num_controlpoints - 1; i++) {
+            auto prev_egde = curveEdges[i - 1];
+            auto cur_edge = curveEdges[i];
+            darboux[i] = glm::cross(prev_egde, cur_edge) /
+                         (glm::length(prev_egde) * glm::length(cur_edge) + glm::dot(prev_egde, cur_edge));
+            // darboux[i] = curvature[i] * binormal_on_edges[i] + eps;
         }
-        curve->addEdgeVectorQuantity("darboux", darboux);
+        curve->addNodeVectorQuantity("darboux", darboux);
     }
 
 
     void init_twist() {
         for (size_t i = 1; i < num_edges; i++) {
-            twist_angles[i] = i * (totaltwist / num_edges);
+            twist_angles[i] = totaltwist;
         }
         curve->addEdgeScalarQuantity("twisting angle", twist_angles);
     }
 
 
     void update_material_frame() {
-        for (size_t i = 1; i < num_edges; i++) {
+        for (size_t i = 0; i < num_edges; i++) {
             glm::mat3 matrix = glm::rotate(glm::mat4(1.0f), twist_angles[i], tangent_on_edges[i]);
             material_u[i] = matrix * binormal_on_edges[i];
             material_v[i] = matrix * normal_on_edges[i];
@@ -217,12 +255,16 @@ class Curve {
     }
 
     void cal_bending_force() {
-       
+        bending_force.clear();
+        bending_force.resize(num_controlpoints);
+
+
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
             auto cur_edge = curveEdges[i];
             auto prev_edge = curveEdges[i - 1];
             float co = 2 / (vertex_weight[i] *
                             (glm::length(cur_edge) * glm::length(prev_edge) + glm::dot(cur_edge, prev_edge)));
+
             if (i != 1) {
                 bending_force[i] +=
                     2.f * glm::cross(-1.f * cur_edge, darboux[i]) + glm::dot(darboux[i], cur_edge) * darboux[i];
@@ -233,16 +275,21 @@ class Curve {
             }
             bending_force[i] *= co;
         }
+        bending_force[0] = glm::vec3(0);
+        bending_force[num_controlpoints - 1] = glm::vec3(0);
         curve->addNodeVectorQuantity("bending force", bending_force);
     }
 
 
     void cal_twisting_force() {
+        twisting_force.clear();
+        twisting_force.resize(num_controlpoints);
+
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
-            auto prevd = 0.5f * darboux[i] / glm::length(curveEdges[i - 1]);
-            auto nextd = -0.5f * darboux[i] / glm::length(curveEdges[i]);
+            auto prevd = 0.5f * darboux[i] /edge_length[i - 1];
+            auto nextd = -0.5f * darboux[i] / edge_length[i];
             float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
-            twisting_force[i] = -1 * totaltwist * (nextd + prevd) / (L + eps);
+            twisting_force[i] = totaltwist * (nextd + prevd + eps) / L;
         }
         curve->addNodeVectorQuantity("twisting force", twisting_force);
     }
@@ -254,6 +301,11 @@ class Curve {
     }
 
     void symEuler() {
+        acceleration.clear();
+        acceleration.resize(num_controlpoints);
+        velocity.clear();
+        velocity.resize(num_controlpoints);
+
         float dt = 0.0001;
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
             point F_total = bending_force[i] + twisting_force[i];
@@ -263,52 +315,68 @@ class Curve {
         }
         curve->addNodeVectorQuantity("velocity", velocity);
         curve->addNodeVectorQuantity("acceleration", acceleration);
+
+
+        old_edge_length.clear();
+        old_edge_length.resize(num_edges);
+        for (size_t i = 0; i < num_controlpoints - 1; i++) {
+            old_edge_length.push_back(glm::length(curveEdges[i]));
+        }
+
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
             point new_x = controlpoints[i] + velocity[i] * dt;
             controlpoints[i] = new_x;
         }
         curve->updateNodePositions(controlpoints);
-    }
 
-    void tst_gd() {
-        float lr = 0.01;
-        int iterations = 10;
-
-        for (int iter = 0; iter < iterations; iter++) {
-            for (size_t i = 0; i < twist_angles.size(); i++) {
-                float gradient = 2 * twist_angles[i];
-                twist_angles[i] -= lr * gradient;
-            }
-            updatematerial_frame();
-
-            curve->addEdgeScalarQuantity("twisting angle", twist_angles);
-            float loss = std::accumulate(twist_angles.begin(), twist_angles.end(), 0.0f,
-                                         [](float acc, float angle) { return acc + angle * angle; });
-            std::cout << "Iteration " << iter << ", Loss: " << loss << std::endl;
+        for (size_t i = 0; i < num_controlpoints - 1; i++) {
+            // curveEdgesId[i] = {i, i + 1};
+            curveEdges[i] = controlpoints[i + 1] - controlpoints[i];
         }
+
+        // curve = registerCurveNetwork("Straight Line", controlpoints, curveEdgesId);
     }
 
-    void tst_gd_bend() {
 
-        float v0 = 0.0;
-        float lr = 0.01;
-        float dt = 0.01;
+    // void tst_gd() {
+    //     float lr = 0.01;
+    //     int iterations = 10;
 
-        for (size_t iter = 0; iter < 1; iter++) {
-            for (size_t i = 1; i < num_controlpoints - 1; i++) {
-                acceleration[i] = lr * bending_force[i] / vertex_weight[i];
-                point new_x = controlpoints[i] + v0 * dt + 0.5f * acceleration[i] * dt * dt;
-                controlpoints[i] = new_x;
-            }
-            curve->updateNodePositions(controlpoints);
-            update_bishop();
-            gen_vertex_weight();
-            update_material_frame();
-            cal_curvature();
-            cal_darboux();
-            cal_bending_force();
-        }
-    }
+    //     for (int iter = 0; iter < iterations; iter++) {
+    //         for (size_t i = 0; i < twist_angles.size(); i++) {
+    //             float gradient = 2 * twist_angles[i];
+    //             twist_angles[i] -= lr * gradient;
+    //         }
+    //         updatematerial_frame();
+
+    //         curve->addEdgeScalarQuantity("twisting angle", twist_angles);
+    //         float loss = std::accumulate(twist_angles.begin(), twist_angles.end(), 0.0f,
+    //                                      [](float acc, float angle) { return acc + angle * angle; });
+    //         std::cout << "Iteration " << iter << ", Loss: " << loss << std::endl;
+    //     }
+    // }
+
+    // void tst_gd_bend() {
+
+    //     float v0 = 0.0;
+    //     float lr = 0.01;
+    //     float dt = 0.01;
+
+    //     for (size_t iter = 0; iter < 1; iter++) {
+    //         for (size_t i = 1; i < num_controlpoints - 1; i++) {
+    //             acceleration[i] = lr * bending_force[i] / vertex_weight[i];
+    //             point new_x = controlpoints[i] + v0 * dt + 0.5f * acceleration[i] * dt * dt;
+    //             controlpoints[i] = new_x;
+    //         }
+    //         curve->updateNodePositions(controlpoints);
+    //         update_bishop();
+    //         gen_vertex_weight();
+    //         update_material_frame();
+    //         cal_curvature();
+    //         cal_darboux();
+    //         cal_bending_force();
+    //     }
+    // }
 
     // void updatupdate_all() {
     //     for (size_t i = 1; i < num_edges; i++) {
@@ -330,6 +398,20 @@ class Curve {
         curve->addEdgeVectorQuantity("material_u", material_u);
     }
 
+    void manifoldProjection() {
+        for (size_t i = 0; i < num_controlpoints - 1; ++i) {
+            glm::vec3 edge = controlpoints[i + 1] - controlpoints[i];
+            float currentLength = glm::length(edge);
+            if (currentLength == 0) continue; // Avoid division by zero
+            float desiredLength = old_edge_length[i];
+            glm::vec3 correction = (edge / currentLength) * (desiredLength - currentLength);
+            // Apply correction evenly to both vertices
+            controlpoints[i] += correction * 0.5f;
+            controlpoints[i + 1] -= correction * 0.5f;
+        }
+        curve->updateNodePositions(controlpoints);
+    }
+
 
   private:
     size_t num_controlpoints;
@@ -337,11 +419,11 @@ class Curve {
 
     float eps = 1e-6;
 
-    float alpha = 0.2;
-    float beta = 100;
+    float alpha = 1;
+    float beta = 1;
 
     const point reference = point(0, 0, 1);
-    float totaltwist = 100 * PI;
+    float totaltwist = PI;
     float totallength;
 
     std::vector<point> controlpoints;
@@ -374,4 +456,5 @@ class Curve {
     std::vector<point> twisting_force;
 
     std::vector<point> acceleration;
+    std::vector<float> old_edge_length;
 };

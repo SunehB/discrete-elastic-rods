@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Reveal JS Presentation" />
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/reveal.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/theme/white.css" id="theme" />
+
+    <script type="text/javascript" id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <title>Reveal JS - CDN Example - Markdown</title>
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides text-3xl text-start ">
+            <section>
+                <p class="text-6xl font-bold pb-20 ">Discrete elastic Rod (DER)</p>
+
+                <p>Hangqi Cui - Nada Abdelwahab - Suneh Bhatia</p>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-10">
+                    What is a Discrete Elastic Rod?
+                </p>
+                <ol>
+                    <li>Kirchhoff rod</li>
+                    <img src="./kirch.png" alt="">
+                    <li>Discrete polyline ( primals and duals)</li>
+                    <img src="./pirmal.png" alt="" class="px-16">
+                </ol>
+            </section>
+            <section class="px-32">
+                <p class="text-6xl font-bold pb-10">Solve Dynamics!</p>
+                <ul class="left-0">
+                    <li>Rope/Cable</li>
+                    <li>Viscous thread</li>
+                    <li>Hair simulation</li>
+                </ul>
+
+                <p>Standard setup:</p>
+                <p>
+                    $$ \text{Energy} \rightarrow \text{Force} \rightarrow
+                    \text{Acceleration} \rightarrow \text{Position} $$
+                </p>
+            </section>
+            <section class="px-32">
+                <p class="text-6xl font-bold pb-10">Two important assumption</p>
+                <ul class="left-0">
+                    <li>Inextensible rod </li>
+                    <li>Quasitic Update </li>
+                </ul>
+            </section>
+            <section class="px-32">
+                <p class="text-6xl font-bold pb-">Bishop Frame</p>
+                <p class="border p-4 justify-center text-gray-600">
+                    Twist is independent from the curve
+                </p>
+                <p>Tangent, normal and binormal.</p>
+                <ul>
+                    <li>Tangent is always deterministic in the discrete curve.</li>
+                    <li>
+                        Set up a reference frame (normal)((0,0,1)) at the beginning of the
+                        curve.
+                    </li>
+                    <li>$ B = T \times N$</li>
+                </ul>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb">Parallel Transport</p>
+                <p>Construct the remaining normals iteratively.</p>
+                <p>A roation matrix using axis and angle.</p>
+                <p>$ N^{i+1} = P^i * N^i $</p>
+                <video src="./paralleltransport.mov"></video>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-">Material Frame</p>
+
+                <p>Simply rotate u and v in twisting angle $\theta$</p>
+
+                <div class="px-32">
+                    <img src="/material frame .png" alt="" >
+                </div>
+                
+            </section>
+            <section class="">
+                <p class="text-6xl font-bold pb-20">Curvature and Darboux vector</p>
+                <p class="px-32">
+                    Surprisingly Many ways to approximate curvature, and receive
+                    difference results!
+                </p>
+                <p>$\kappa = 2 \tan \frac{\theta}{2}$</p>
+                <p>Darboux vector is curvature binormal.</p>
+                <p>$\Omega = \kappa b$</p>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-20">Dynamics 101</p>
+                <p class="text-4xl">$$ F = dE \qquad E = \int F dx $$ $$ F = ma \rightarrow {\partial E\over \partial
+                    x}=M\ddot{x} $$</p>
+            </section>
+            <section>
+                <p class="text-6xl font-bold"> Energies and Forcies <span class="text-xl">(continous case)</span></p>
+
+                <ul>
+                    <li>Elastic Energy: 0</li>
+                    <li> Bending Energy :
+                        $$ {1\over2}\int \alpha \kappa^2 ds $$
+                    </li>
+                    <li>
+                        Twisting Energy:
+                        $$ {1\over2}\int \beta (\theta ^i)^2 ds $$
+                    </li>
+                    <li> $\alpha, \beta$: Material modoulus</li>
+                </ul>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-8">Energies and Forcies <span class="text-xl">(discrete case)</span></p>
+
+                <ul>
+                    <li>Elastic Energy: 0</li>
+                    <li> Bending Energy :
+                        $$ E_{{bend }}(\Gamma)=\frac{1}{2} \sum_{i=1}^n \alpha\left(\frac{\kappa \mathbf{b}_i}{\bar{l}_i
+                        / 2}\right)^2 \frac{\bar{l}_i}{2}=\sum_{i=1}^n \frac{\alpha\left(\kappa
+                        \mathbf{b}_i\right)^2}{\bar{l}_i} $$
+                    </li>
+                    <li>
+                        Twisting Energy:
+                        $$ E_{{twist}}(\Gamma)=\sum_{i=1}^n \beta
+                        \frac{\left(\theta^i-\theta^{i-1}\right)^2}{\bar{l}_i}=\sum_{i=1}^n \frac{\beta
+                        m_i^2}{\bar{l}_i} $$
+
+                    </li>
+                    <li>Voronoi weight:
+                        $$
+                        l_i = |e^{i-1}| +|e^i|
+                        $$ </li>
+                </ul>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-8">Symplectic Euler</p>
+                <p>Symplectic Euler, Forward Euler, Backward Euler</p>
+                <p>
+                    $$
+                    a = {dv\over dt}, \qquad v = \int a dt
+                    $$
+                    $$
+                    v = {dx\over dt}, \qquad x = \int v dt
+                    $$
+                    $$
+                    F = ma \quad
+                    $$
+
+                </p>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-8">Constraints</p>
+                <ul>
+                    <li>Manifold Projection : Maintain the shape of the curve
+                        <ul><li>Remeber the curve is inextensible?</li></ul>
+                    </li>
+                    <li>Twist holonomy : Update twisting angles 
+                        <ul><li>Another assumption: twist is updated simutaneously</li></ul>
+                    </li>
+                </ul>
+            </section>
+
+            <section>
+                <div class="px-8 center">
+                    <img src="/algorithm.png" alt="" >
+                </div>
+            </section>
+
+            <section>
+                <p class="text-6xl font-bold pb-8">Experiments</p>
+            </section>
+
+            <section>
+                <p class="text-6xl font-bold pb-8">Follow up researches (In the past)</p>
+            </section>
+
+            
+
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/reveal.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/plugin/markdown/markdown.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/plugin/math/math.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/plugin/notes/notes.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.1.0/plugin/highlight/highlight.js"></script>
+
+    <script>
+        Reveal.initialize({
+            controls: true,
+            progress: true,
+            history: true,
+            center: true,
+
+            // IMPORTANT: The order matters!
+            // So, RevealHightlight must be the LAST to load
+            plugins: [RevealMarkdown, RevealMath, RevealNotes, RevealHighlight],
+        });
+    </script>
+</body>
+
+</html>
