@@ -1,3 +1,7 @@
+#include "glm/exponential.hpp"
+#include "glm/fwd.hpp"
+#include "glm/geometric.hpp"
+#include "glm/matrix.hpp"
 #include "polyscope/curve_network.h"
 #include "polyscope/utilities.h"
 #include <cmath>
@@ -71,9 +75,10 @@ class Curve {
     }
 
     void initcurve() {
-        size_t nSamples = 100;
-        double dt = 0.01;
-        for (size_t i = 0; i < nSamples; ++i) {
+    size_t nSamples = 100;
+        double dt = 1.0 / nSamples; 
+
+        for (size_t i = 0; i <= nSamples; ++i) { 
             double t = i * dt;
             point p;
             p.x = cos(2 * M_PI * t);
@@ -81,14 +86,33 @@ class Curve {
             p.z = 0.3 * sin(4 * M_PI * t);
             controlpoints.push_back(p);
         }
-        num_controlpoints = nSamples;
+
+        num_controlpoints = nSamples+1;
         num_edges = nSamples;
-        for (size_t i = 0; i < num_controlpoints; i++) {
-            curveEdgesId.push_back({i, (i + 1) % num_controlpoints});
-            curveEdges.push_back(controlpoints[(i + 1) % num_controlpoints] - controlpoints[i]);
+
+        for (size_t i = 0; i < nSamples; i++) { 
+            curveEdgesId.push_back({i, (i + 1) % nSamples});
+            curveEdges.push_back(controlpoints[(i + 1) % nSamples] - controlpoints[i]);
         }
-        curve = registerCurveNetwork("Sprial", controlpoints, curveEdgesId);
+
+        registerCurveNetwork("Spiral", controlpoints, curveEdgesId);
         resize_vectors();
+
+        cal_tangent();
+        normal_on_edges[0] = glm::normalize(glm::cross(reference, tangent_on_edges[0]));
+        binormal_on_edges[0] = glm::normalize(glm::cross(tangent_on_edges[0], normal_on_edges[0]));
+
+        update_bishop();
+        arc_length_parameterization();
+        calc_turn_angle();
+        gen_vertex_weight();
+        cal_curvature();
+        cal_darboux();
+        init_twist();
+        update_material_frame();
+        cal_bending_force();
+        cal_twisting_force();
+
     }
 
 
@@ -122,21 +146,25 @@ class Curve {
         curve->addEdgeScalarQuantity("arc length", arc_length);
     }
 
+    void cal_tangent(){
+        for (size_t i = 0; i < num_edges; i++) {
+            tangent_on_edges[i] = glm::normalize(curveEdges[i]);
+        }
+        curve->addEdgeVectorQuantity("tangent on edges", tangent_on_edges);
+    }
 
     void update_bishop() {
 
-        for (size_t iE = 0; iE < num_edges; iE++) {
-            size_t i0 = curveEdgesId[iE][0];
-            size_t i1 = curveEdgesId[iE][1];
-            tangent_on_edges[iE] = glm::normalize(controlpoints[i1] - controlpoints[i0]);
-        }
-        curve->addEdgeVectorQuantity("tangent on edges", tangent_on_edges);
+        for (size_t i = 0; i < num_edges; i++) {
+            point t_i = tangent_on_edges[i];
+            point t_i_1 = tangent_on_edges[i +1];
 
-        normal_on_edges[0] = glm::normalize(glm::cross(reference, tangent_on_edges[0]));
-        for (size_t i = 1; i < num_edges; i++) {
-            point d_tangent = tangent_on_edges[i] - tangent_on_edges[i - 1];
-            if (glm::length(d_tangent) > 1e-6) { // 非零向量
-                normal_on_edges[i] = glm::normalize(d_tangent);
+            point axis = glm::cross(t_i_1, t_i);
+            float angle = glm::acos(glm::dot(t_i_1, t_i));
+            glm::mat3 rotationMatrix = glm::rotate(glm::mat4(1.0f), angle, axis);
+            
+            if (glm::length(axis) > 1e-6) { 
+                normal_on_edges[i] =  rotationMatrix * normal_on_edges[i - 1];
             } else { // 零向量，沿用前一条边的法线
                 normal_on_edges[i] = normal_on_edges[i - 1];
             }
@@ -191,11 +219,25 @@ class Curve {
         cal_darboux();
 
         init_twist();
+        // update_twist();
         update_material_frame();
 
         cal_bending_force();
         cal_twisting_force();
         // symEuler();
+    }
+
+    void forloop() {
+        symEuler();
+        update_bishop();
+        arc_length_parameterization();
+        calc_turn_angle();
+        gen_vertex_weight();
+        cal_curvature();
+        cal_darboux();
+        updatematerial_frame();
+        cal_bending_force();
+        cal_twisting_force();
     }
 
 
@@ -243,6 +285,16 @@ class Curve {
         curve->addEdgeScalarQuantity("twisting angle", twist_angles);
     }
 
+    void update_twist() {
+        // holonomy
+
+        float delta = 0.01;
+        totaltwist -= delta;
+        for (size_t i = 1; i < num_edges; i++) {
+            twist_angles[i] = totaltwist;
+        }
+        curve->addEdgeScalarQuantity("twisting angle", twist_angles);
+    }
 
     void update_material_frame() {
         for (size_t i = 0; i < num_edges; i++) {
@@ -286,7 +338,7 @@ class Curve {
         twisting_force.resize(num_controlpoints);
 
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
-            auto prevd = 0.5f * darboux[i] /edge_length[i - 1];
+            auto prevd = 0.5f * darboux[i] / edge_length[i - 1];
             auto nextd = -0.5f * darboux[i] / edge_length[i];
             float L = 0.5 * std::accumulate(vertex_weight.begin(), vertex_weight.begin() + i, 0.0f);
             twisting_force[i] = totaltwist * (nextd + prevd + eps) / L;
@@ -317,24 +369,53 @@ class Curve {
         curve->addNodeVectorQuantity("acceleration", acceleration);
 
 
-        old_edge_length.clear();
-        old_edge_length.resize(num_edges);
-        for (size_t i = 0; i < num_controlpoints - 1; i++) {
-            old_edge_length.push_back(glm::length(curveEdges[i]));
-        }
+        std::vector<point> newpoints;
+        newpoints.resize(num_controlpoints);
 
         for (size_t i = 1; i < num_controlpoints - 1; i++) {
             point new_x = controlpoints[i] + velocity[i] * dt;
-            controlpoints[i] = new_x;
+            newpoints[i] = new_x;
         }
         curve->updateNodePositions(controlpoints);
 
+        std::vector<point> newedges;
+        std::vector<float> newedge_length;
+        newedges.resize(num_edges);
+        newedge_length.resize(num_edges);
+
         for (size_t i = 0; i < num_controlpoints - 1; i++) {
-            // curveEdgesId[i] = {i, i + 1};
-            curveEdges[i] = controlpoints[i + 1] - controlpoints[i];
+            newedges[i] = newpoints[i + 1] - newpoints[i];
+            newedge_length[i] = glm::length(newedges[i]);
         }
 
-        // curve = registerCurveNetwork("Straight Line", controlpoints, curveEdgesId);
+        std::vector<point> newtangent_on_edges;
+        newtangent_on_edges.resize(num_edges);
+        for (size_t i = 0; i < num_edges; i++) {
+            newtangent_on_edges[i] = glm::normalize(newpoints[curveEdgesId[i][1]] - newpoints[curveEdgesId[i][0]]);
+        }
+
+        // holonomy
+
+        point timePtAxis;
+        float sumSqAxis = 0.0f;
+        timePtAxis = glm::cross(tangent_on_edges[0], newtangent_on_edges[0]);
+
+        sumSqAxis = glm::sqrt(sumSqAxis);
+        float timePtAngle = glm::atan(sumSqAxis, glm::dot(tangent_on_edges[0], newtangent_on_edges[0]));
+
+        glm::mat3 timePtRot = glm::rotate(glm::mat4(1.0f), timePtAngle, timePtAxis);
+        point new_reference = timePtRot * reference;
+
+        // glm::mat3 holonomy = glm::transpose(new_reference) * reference;
+        // totaltwist -= holonomyAngle;
+        // std::cout << "Holonomy Angle: " << holonomyAngle << std::endl;
+
+        // controlpoints = newpoints;
+        // curveEdges = newedges;
+        // edge_length = newedge_length;
+        // tangent_on_edges = newtangent_on_edges;
+
+        // curve->updateNodePositions(controlpoints);
     }
 
 
@@ -398,19 +479,19 @@ class Curve {
         curve->addEdgeVectorQuantity("material_u", material_u);
     }
 
-    void manifoldProjection() {
-        for (size_t i = 0; i < num_controlpoints - 1; ++i) {
-            glm::vec3 edge = controlpoints[i + 1] - controlpoints[i];
-            float currentLength = glm::length(edge);
-            if (currentLength == 0) continue; // Avoid division by zero
-            float desiredLength = old_edge_length[i];
-            glm::vec3 correction = (edge / currentLength) * (desiredLength - currentLength);
-            // Apply correction evenly to both vertices
-            controlpoints[i] += correction * 0.5f;
-            controlpoints[i + 1] -= correction * 0.5f;
-        }
-        curve->updateNodePositions(controlpoints);
-    }
+    // void manifoldProjection() {
+    //     for (size_t i = 0; i < num_controlpoints - 1; ++i) {
+    //         glm::vec3 edge = controlpoints[i + 1] - controlpoints[i];
+    //         float currentLength = glm::length(edge);
+    //         if (currentLength == 0) continue; // Avoid division by zero
+    //         // float desiredLength = old_edge_length[i];
+    //         glm::vec3 correction = (edge / currentLength) * (desiredLength - currentLength);
+    //         // Apply correction evenly to both vertices
+    //         controlpoints[i] += correction * 0.5f;
+    //         controlpoints[i + 1] -= correction * 0.5f;
+    //     }
+    //     curve->updateNodePositions(controlpoints);
+    // }
 
 
   private:

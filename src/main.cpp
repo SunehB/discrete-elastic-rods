@@ -1,19 +1,20 @@
 #include "imgui.h"
-#include "include/Curve.h"
+#include "include/Curvenew.h"
 #include "polyscope/polyscope.h"
 
 
-Curve sprial;
-Curve straight_line;
+// Curve sprial;
+// Curve straight_line;
 
-void DERcallback(Curve& cur) {
+void DERcallback(Curven& cur) {
     ImGui::Begin("DERcallback");
     ImGui::Text("Hello, wsssssorld!");
     if (ImGui::Button("test_run")) {
         for (int i = 0; i < 1; i++) {
-            cur.symEuler();
-            // cur.manifoldProjection();
-            cur.test_run();
+            // cur.symEuler();
+            // // cur.manifoldProjection();
+            // cur.test_run();
+            cur.loop();
         }
     }
 
@@ -43,9 +44,9 @@ int main() {
     // straight_line.test_run();
 
 
-    Curve curve;
+    Curven curve;
     curve.initcurve();
-    curve.test_run();
+    // curve.test_run();
 
     polyscope::state::userCallback = [&]() { DERcallback(curve); };
 
