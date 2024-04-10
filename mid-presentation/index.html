@@ -36,13 +36,18 @@
                     <img class="fragment" src="./pirmal.png" alt="" class="px-16">
                 </ol>
             </section>
+            <!-- <section class="px-32">
+                <p class="text-6xl font-bold pb-10 ">End goal</p>
+                
+            </section> -->
+
             <section class="px-32">
                 <p class="text-6xl font-bold pb-10 ">Solve Dynamics!</p>
-                <ul class="left-0">
+                <!-- <ul class="left-0">
                     <li class="fragment">Rope/Cable</li>
                     <li class="fragment">Viscous thread</li>
                     <li class="fragment">Hair simulation</li>
-                </ul>
+                </ul> -->
 
                 <p class="fragment">Standard setup:</p>
                 <p class="fragment">
@@ -51,11 +56,25 @@
                 </p>
             </section>
             <section class="px-32">
-                <p class="text-6xl font-bold pb-10">Two important assumption</p>
-                <ul class="left-0"class="fragment" >
-                    <li class="fragment">Inextensible rod </li>
-                    <li class="fragment">Quasitic Update </li>
+                <p class="text-6xl font-bold pb-10">Three important assumptions</p>
+                <ul class="left-0 fragment">
+                    <li class="fragment">Inextensible rod
+                        <ul class="fragment">
+                            <li>Ignore the elastic energy in this model</li>
+                        </ul>
+                    </li>
+                    <li class="fragment">Quasistatic Update
+                        <ul class="fragment">
+                            <li>Twist angle changes must synchronize on all the edges simultaneously and before the bending force take actions</li>
+                        </ul>
+                    </li>
+                    <li class="fragment">Isotropic rod
+                        <ul class="fragment">
+                            <li>Cross section of the rod is of a unit circle</li>
+                        </ul>
+                    </li>
                 </ul>
+                
             </section>
             <section class="px-32">
                 <p class="text-6xl font-bold pb-">Bishop Frame</p>
@@ -72,20 +91,25 @@
                     <li class="fragment">$ B = T \times N$</li>
                 </ul>
             </section>
+
+            <section class="px-32">
+                <p class="text-6xl font-bold pb-">Bishop Frame</p>
+                <video  data-autoplay src="bishop.mov"></video>
+            </section>
             <section>
                 <p class="text-6xl font-bold pb">Parallel Transport</p>
                 <p class="fragment">Construct the remaining normals iteratively.</p>
                 <p class="fragment">A roation matrix using axis and angle.</p>
                 <p class="fragment">$ N^{i+1} = P^i * N^i $</p>
-                <video  data-autoplay src="./paralleltransport.mov"></video>
+                <video  data-autoplay class="fragment" src="paralleltransport.mov"></video>
             </section>
             <section>
                 <p class="text-6xl font-bold pb-">Material Frame</p>
 
                 <p>Simply rotate u and v in twisting angle $\theta$</p>
 
-                <div class="px-32 fragment">
-                    <img class="fragment" src="/materialframe.png" alt="" >
+                <div class="px-32">
+                    <img class="" src="materialframe.png" alt="" >
                 </div>
                 
             </section>
@@ -96,8 +120,8 @@
                     difference results!
                 </p>
                 <p class="fragment">$\kappa = 2 \tan \frac{\theta}{2}$</p>
-                <p class="fragment">Darboux vector- rotation vector of the curve with curvature $\kappa$</p>
-                <p class="fragment">$\Omega = \kappa b$</p>
+                <p class="fragment">Darboux vector - rotation vector of the curve with curvature $\kappa$</p>
+                <p class="fragment">$\Omega = \kappa b =\frac{2 \mathbf{e}^{i-1} \times \mathbf{e}^i}{\left|\overline{\mathbf{e}}^{i-1}\right|\left|\overline{\mathbf{e}}^i\right|+\mathbf{e}^{i-1} \cdot \mathbf{e}^i}$</p>
             </section>
             <section>
                 <p class="text-6xl font-bold pb-8">Dynamics 101</p>
@@ -105,8 +129,12 @@
                     x}=M\ddot{x} $$</p>
             </section>
             <section>
+<<<<<<< HEAD
 
                 <p class="text-6xl font-bold"> Energies and Forcies <span class="text-xl">(continous case)</span></p>
+=======
+                <p class="text-6xl font-bold"> Energies and Forces <span class="text-xl">(continuous case)</span></p>
+>>>>>>> 64f00ae76afc071cfc5528b62b0c73ad75de406c
 
                 <ul class="fragment">
                     <li class="fragment">Elastic Energy: 0</li>
@@ -117,11 +145,11 @@
                         Twisting Energy:
                         $$ {1\over2}\int \beta (\theta ^i)^2 ds $$
                     </li>
-                    <li class="fragment"> $\alpha, \beta$: Material modoulus</li>
+                    <li class="fragment"> $\alpha, \beta$: Material modulus</li>
                 </ul>
             </section>
             <section>
-                <p class="text-6xl font-bold pb-8">Energies and Forcies <span class="text-xl">(discrete case)</span></p>
+                <p class="text-6xl font-bold pb-8">Energies and Forces <span class="text-xl">(discrete case)</span></p>
 
                 <ul class="fragment">
                     <li class="fragment">Elastic Energy: 0</li>
@@ -135,6 +163,25 @@
                         $$ E_{{twist}}(\Gamma)=\sum_{i=1}^n \beta
                         \frac{\left(\theta^i-\theta^{i-1}\right)^2}{\bar{l}_i}=\sum_{i=1}^n \frac{\beta
                         m_i^2}{\bar{l}_i} $$
+
+                    </li>
+                    <li class="fragment">Voronoi weight:
+                        $$
+                        l_i = |e^{i-1}| +|e^i|
+                        $$ </li>
+                </ul>
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-8">Energies and Forces <span class="text-xl">(discrete case)</span></p>
+
+                <ul class="fragment">
+                    <li class="fragment">Elastic Force: 0</li>
+                    <li class="fragment"> Bending Force :
+                        $$F_{{bend}} =-\frac{2 \alpha}{\bar{l}_j}\left(\nabla_i(\kappa \mathbf{b})_j\right)^T(\kappa \mathbf{b})_j$$
+                    </li>
+                    <li class="fragment">
+                        Twisting Force:
+                        $$F_{{twist}} =\frac{\beta\left(\theta^n-\theta^0\right)}{\bar{L}} \nabla_i \psi_j$$
 
                     </li>
                     <li class="fragment">Voronoi weight:
@@ -162,31 +209,46 @@
             <section>
                 <p class="text-6xl font-bold pb-8">Constraints</p>
                 <ul class="fragment">
+<<<<<<< HEAD
                     <li class="fragment">Manifold Projection : Maintain the shape of the curve
                         <ul><li>Remeber the curve is inextensible?</li></ul>
                         <ul><li>Rigid body coupling</li></ul>
                     </li>
                     <li class="fragment">Twist holonomy : Update twisting angles 
                         <ul><li>Another assumption: twist is updated simutaneously</li></ul>
+=======
+                    <li class="fragment">Manifold Projection: Maintain the shape of the curve
+                        <ul><li>Remember the curve is inextensible?</li></ul>
+>>>>>>> 64f00ae76afc071cfc5528b62b0c73ad75de406c
                     </li>
-                    <li class="fragment">Twist holonomy : Update twisting angles 
-                        <ul><li>Another assumption: twist is updated simutaneously</li></ul>
+                    <li class="fragment">Twist holonomy: Update twisting angles 
+                        <ul><li>Another assumption: twist is updated simultaneously</li></ul>
                     </li>
                 </ul>
             </section>
 
             <section>
                 <!-- <div class="px-8 center"> -->
-                    <img src="/algorithm.png" alt="" >
+                    <img src="algorithm.png" alt="" >
                 <!-- </div> -->
             </section>
 
             <section>
                 <p class="text-6xl font-bold pb-8">Experiments</p>
+                <img src="exp1.png" alt="">
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-8">Experiments</p>
+                <img src="exp2.png" alt="">
             </section>
 
             <section>
-                <p class="text-6xl font-bold pb-8">Follow up researches (In the past)</p>
+                <p class="text-6xl font-bold pb-8">Applications</p>
+                <img src="hair1.png" alt="">
+            </section>
+            <section>
+                <p class="text-6xl font-bold pb-8">Applications</p>
+                <img src="tree.png" alt="">
             </section>
 
             
