@@ -10,19 +10,8 @@ void DERcallback(Curven& cur) {
     ImGui::Begin("DERcallback");
     ImGui::Text("Hello, wsssssorld!");
     if (ImGui::Button("test_run")) {
-        for (int i = 0; i < 1; i++) {
-            // cur.symEuler();
-            // // cur.manifoldProjection();
-            // cur.test_run();
-            cur.loop();
-        }
+        cur.loop();
     }
-
-    // static float newtwist = 0.0;
-    // if(ImGui::SliderFloat("twistonline", &newtwist, 0, 4*PI)){
-    //     cur.adjusttwist(newtwist);
-    // }
-
     ImGui::End();
 }
 
