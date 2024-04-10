@@ -51,7 +51,8 @@
 
                 <p class="fragment">Standard setup:</p>
                 <p class="fragment">
-                    $$ \text{Energy} \rightarrow \text{Force} \rightarrow
+                    $$ 
+                    \text{Energy} \rightarrow \text{Force} \rightarrow
                     \text{Acceleration} \rightarrow \text{Position} $$
                 </p>
             </section>
@@ -95,6 +96,14 @@
             <section class="px-32">
                 <p class="text-6xl font-bold pb-">Bishop Frame</p>
                 <video  data-autoplay src="bishop.mov"></video>
+                <div class="text-sm">
+                    <p>
+                        discrete elastic rods--- bergou ,SIGGRAPH 2008
+                        <br>
+                        https://www.youtube.com/watch?v=MBYBV8EAis0
+                    </p>
+                </div>
+
             </section>
             <section>
                 <p class="text-6xl font-bold pb">Parallel Transport</p>
@@ -102,6 +111,13 @@
                 <p class="fragment">A roation matrix using axis and angle.</p>
                 <p class="fragment">$ N^{i+1} = P^i * N^i $</p>
                 <video  data-autoplay class="fragment" src="paralleltransport.mov"></video>
+                <div class="text-sm">
+                    <p>
+                        discrete elastic rods--- bergou ,SIGGRAPH 2008
+                        <br>
+                        https://www.youtube.com/watch?v=MBYBV8EAis0
+                    </p>
+                </div>
             </section>
             <section>
                 <p class="text-6xl font-bold pb-">Material Frame</p>
@@ -110,6 +126,13 @@
 
                 <div class="px-32">
                     <img class="" src="materialframe.png" alt="" >
+                     <div class="text-sm">
+                    <p>
+                        discrete elastic rods--- bergou ,SIGGRAPH 2008
+                        <br>
+                        https://www.youtube.com/watch?v=MBYBV8EAis0
+                    </p>
+                </div>
                 </div>
                 
             </section>
@@ -230,25 +253,44 @@
             <section>
                 <!-- <div class="px-8 center"> -->
                     <img src="algorithm.png" alt="" >
+                    <div class="text-sm">
+                        <p>
+                            discrete elastic rods--- bergou ,SIGGRAPH 2008
+                            <br>
+                            https://www.youtube.com/watch?v=MBYBV8EAis0
+                        </p>
+                    </div>
                 <!-- </div> -->
             </section>
 
             <section>
                 <p class="text-6xl font-bold pb-8">Experiments</p>
                 <img src="exp1.png" alt="">
+                <p class="text-sm">
+                    Michell's buckling instability of an elastic ring with imposed internal twist θn. Left: above a critical value of θn, the planar, circular shape loses stability and buckles to a non-planar shape. Right: domain of stability of the circular shape with radius R = 1: simulations (dots) compared to theoretical threshold (black curve). Each dot corresponds to a simulation run with particular values of β and θn (α = 1 and n = 50 are fixed), initialized with a slightly perturbed circular shape; dots are colored in light blue when the amplitude of the perturbation decreases in time (stable) and in purple when it increases (unstable).
+                </p>
             </section>
             <section>
                 <p class="text-6xl font-bold pb-8">Experiments</p>
                 <img src="exp2.png" alt="">
+                <p class="text-sm">Plectoneme formation: When the ends of a hanging elastic rod are twisted, it takes on structures known as plectonemes. The formation of plectonemes is governed by physical parameters, such as the twist rate, viscosity of the ambient fluid, and gravity.</p>
             </section>
 
             <section>
                 <p class="text-6xl font-bold pb-8">Applications</p>
                 <img src="hair1.png" alt="">
+                <p>Towards Realistic Hair Animation Using
+                    Discrete Elastic Rods
+                    Mila Grigorova
+                    Master Thesis</p>
             </section>
             <section>
                 <p class="text-6xl font-bold pb-8">Applications</p>
                 <img src="tree.png" alt="">
+                <p>
+                    discrete elastic rods--- bergou ,SIGGRAPH 2008
+                </p>
+
             </section>
 
             
@@ -268,6 +310,16 @@
             progress: true,
             history: true,
             center: true,
+            width: 960,
+            height: 800,
+
+            // Factor of the display size that should remain empty around
+            // the content
+            margin: 0.04,
+
+            // Bounds for smallest/largest possible scale to apply to content
+            minScale: 0.1,
+            maxScale: 1.0,
 
             // IMPORTANT: The order matters!
             // So, RevealHightlight must be the LAST to load
