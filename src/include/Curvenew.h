@@ -15,6 +15,10 @@
 #include <Eigen/Sparse>
 #include <vector>
 
+// #include <iostream>
+#include <thread>
+#include <chrono>
+
 using namespace polyscope;
 class Curven {
     using point = glm::vec3;
@@ -240,15 +244,10 @@ class Curven {
         
     }
 
-    void manifoldprojection() {
+    void fastprojection() {
+        // 100 * 1 
         constraint.clear();
         constraint.resize(num_edges);
-
-        float newtotallength = 0;
-        for (size_t i = 0; i < num_edges; i++) {
-            // std::cout << "newedge_length " << newedge_length[i] << std::endl;
-            newtotallength += newedge_length[i];
-        }
 
         for (size_t i = 0; i < num_edges; i++) {
             constraint[i] = newedge_length[i] - edge_length[i];
@@ -259,10 +258,10 @@ class Curven {
                        [](int value) { return std::abs(value); });
         auto max = *std::max_element(abs_con.begin(), abs_con.end());
 
-        // 1 * 100
-        Eigen::MatrixXf constraintMatrix(1, num_edges);
+        // 100 * 1 
+        Eigen::MatrixXf constraintMatrix(num_edges, 1);
         for (size_t i = 0; i < num_edges; i++) {
-            constraintMatrix(0, i) = constraint[i];
+            constraintMatrix(i, 0) = constraint[i];
         }
 
         Eigen::SparseMatrix<float> Mass(3 * 100, 3 * 100);
@@ -289,7 +288,9 @@ class Curven {
                 tripletList.push_back(Eigen::Triplet<float>(i, (i * 3 + 4) % (3 * num_edges), edge.y));
                 tripletList.push_back(Eigen::Triplet<float>(i, (i * 3 + 5) % (3 * num_edges), edge.z));
             }
-            Eigen::SparseMatrix<float> tr = constraintGrad.transpose();
+
+            // 100 * 300
+            Eigen::SparseMatrix<float> constraintGradT = constraintGrad.transpose();
 
             Eigen::SparseLU<Eigen::SparseMatrix<float>> MinvDCsolver;
             MinvDCsolver.compute(Mass);
@@ -297,15 +298,15 @@ class Curven {
                 return;
             }
 
-            // 100 * 300
-            Eigen::SparseMatrix<float> MinvDC = MinvDCsolver.solve(tr);
+            // 300 * 100 
+            Eigen::SparseMatrix<float> MinvDC = MinvDCsolver.solve(constraintGradT);
             if (MinvDCsolver.info() != Eigen::Success) {
                 return;
             }
-            // 300 * 300
+            // 100 * 100 
             Eigen::SparseMatrix<float> DCMinvDC = constraintGrad * MinvDC;
             Eigen::SparseLU<Eigen::SparseMatrix<float>> dLambdasolver;
-            dLambdasolver.compute(MinvDC);
+            dLambdasolver.compute(DCMinvDC);
             if (dLambdasolver.info() != Eigen::Success) {
                 return;
             }
@@ -318,6 +319,7 @@ class Curven {
             // 300 * 1
             auto dxmatrix = -MinvDC * dLambda;
 
+            // reshape
             std::vector<point> dx;
             for (size_t i = 0; i < num_controlpoints; i++) {
                 dx.push_back(point(dxmatrix(i * 3), dxmatrix(i * 3 + 1), dxmatrix(i * 3 + 2)));
@@ -336,23 +338,33 @@ class Curven {
                            [](float value) { return std::abs(value); });
             max = *std::max_element(abs_con.begin(), abs_con.end());
         }
-        curve->updateNodePositions(newpoints);
+
+      
+        controlpoints = newpoints;
+        curveEdges = newedges;
+        edge_length = newedge_length;
+
         for (size_t i = 0; i < num_edges; i++) {
             velocity[i] = (newpoints[i] - controlpoints[i])/dt;
         }
     }
-    
+
     void loop() {
-        for (size_t i = 0; i < 100; i++) {
+
+        for (size_t i = 0; i < 1000; i++) {
             cal_velocity();
-            manifoldprojection();
+            fastprojection();
 
             cal_tangent();
             update_bishop();
             update_material_frame();
             cal_attrs();
             calforce();
+            // std::cout << "iter " << i << "done" <<std::endl;
+            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        std::cout << "done" << std::endl;
+          curve->updateNodePositions(controlpoints);
     }
 
 
