@@ -1,23 +1,7 @@
-#include "glm/exponential.hpp"
-#include "glm/fwd.hpp"
-#include "glm/geometric.hpp"
-#include "glm/matrix.hpp"
 #include "polyscope/curve_network.h"
-#include "polyscope/utilities.h"
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
-// #include <iostream>
-#include <iostream>
-#include <mach/task_info.h>
-#include <numeric>
-// #include <ostream>
 #include <Eigen/Sparse>
+#include <iostream>
 #include <vector>
-
-// #include <iostream>
-#include <thread>
-#include <chrono>
 
 using namespace polyscope;
 class Curven {
@@ -50,8 +34,7 @@ class Curven {
 
 
     void initcurve() {
-        size_t nSamples = 100;
-        double dt = 1.0 / nSamples;
+        dt = 1.0 / nSamples;
 
         for (size_t i = 0; i < nSamples; ++i) {
             double t = i * dt;
@@ -171,23 +154,34 @@ class Curven {
             for (size_t j = 0; j < num_controlpoints; j++) {
                 point edgeR = curveEdges[j];
                 point edgeL = curveEdges[(j - 1 + num_controlpoints) % num_controlpoints];
+
+                glm::mat3 Rmatrix = transpoe(edgeR);
+                glm::mat3 Lmatrix = transpoe(edgeL);
+
+                glm::mat3 RT = glm::transpose(Rmatrix);
+                glm::mat3 LT = glm::transpose(Lmatrix);
+
                 auto w = vertex_weight[j];
-                auto coeff = 0.25f / (w * (glm::length(edgeR) * glm::length(edgeL) + glm::dot(edgeR, edgeL)));
-                // std::cout << "coeff " << coeff << std::endl;
+                auto coeff = -2 / (w * (glm::length(edgeR) * glm::length(edgeL) + glm::dot(edgeR, edgeL)));
                 auto kbj = darboux[j];
 
                 if (i == j - 1) {
-                    bending_force[i] += coeff * (2.f * glm::cross(-edgeR, kbj) + glm::dot(kbj, edgeR) * kbj);
+                    bending_force[i] += coeff * (2.f * glm::cross(-edgeR, kbj) + kbj * RT * kbj);
                 } else if (i == j) {
-                    bending_force[i] += coeff * (2.f * glm::cross(-edgeR, kbj) - glm::dot(kbj, edgeR) * kbj +
-                                                 2.f * glm::cross(-edgeL, kbj) + glm::dot(kbj, edgeL) * kbj);
+                    bending_force[i] += coeff * (2.f * glm::cross(-edgeR, kbj) + kbj * RT * kbj +
+                                                 2.f * glm::cross(-edgeL, kbj) - kbj * LT * kbj);
                 } else if (i == j + 1) {
-                    bending_force[i] += coeff * (2.f * glm::cross(-edgeL, kbj) + glm::dot(kbj, edgeL) * kbj);
+                    bending_force[i] += coeff * (2.f * glm::cross(-edgeL, kbj) - kbj * LT * kbj);
                 }
             }
+            bending_force[i] *= -1;
         }
         // std::cout << "bending force " << bending_force[0] << std::endl;
         curve->addNodeVectorQuantity("bending force", bending_force);
+    }
+
+    glm::mat3 transpoe(point v) {
+        return glm::mat3(v.x, 0, 0, v.y, 0, 0, v.z, 0, 0);
     }
 
     void cal_twisting_force() {
@@ -210,8 +204,7 @@ class Curven {
     void cal_velocity() {
         acceleration.clear();
         acceleration.resize(num_controlpoints);
-        velocity.clear();
-        velocity.resize(num_controlpoints);
+
 
         for (size_t i = 0; i < num_controlpoints; i++) {
             point F_total = -bending_force[i] + twisting_force[i];
@@ -229,7 +222,7 @@ class Curven {
         for (size_t i = 0; i < num_controlpoints; i++) {
             newpoints[i] = controlpoints[i] + velocity[i] * dt;
         }
-        controlpoints = newpoints;
+        // controlpoints = newpoints;
 
         newedges.resize(num_edges);
         newedge_length.resize(num_edges);
@@ -239,13 +232,12 @@ class Curven {
             newedge_length[i] = glm::length(newedges[i]);
         }
 
-        curveEdges = newedges;
-        edge_length = newedge_length;
-        
+        // curveEdges = newedges;
+        // edge_length = newedge_length;
     }
 
     void fastprojection() {
-        // 100 * 1 
+        // 100 * 1
         constraint.clear();
         constraint.resize(num_edges);
 
@@ -258,7 +250,7 @@ class Curven {
                        [](int value) { return std::abs(value); });
         auto max = *std::max_element(abs_con.begin(), abs_con.end());
 
-        // 100 * 1 
+        // 100 * 1
         Eigen::MatrixXf constraintMatrix(num_edges, 1);
         for (size_t i = 0; i < num_edges; i++) {
             constraintMatrix(i, 0) = constraint[i];
@@ -273,10 +265,9 @@ class Curven {
             M_tripletList.push_back(Eigen::Triplet<float>(i * 3 + 2, i * 3 + 2, w));
         }
         Mass.setFromTriplets(M_tripletList.begin(), M_tripletList.end());
-
         while (max > 1e-10) {
-            // 300 * 100
-            Eigen::SparseMatrix<float> constraintGrad(3 * 100, 100);
+            // 100 * 300 
+            Eigen::SparseMatrix<float> constraintGrad(100, 3 * 100);
             std::vector<Eigen::Triplet<float>> tripletList;
             for (size_t i = 0; i < num_edges; i++) {
                 auto edge = newedges[i];
@@ -288,42 +279,47 @@ class Curven {
                 tripletList.push_back(Eigen::Triplet<float>(i, (i * 3 + 4) % (3 * num_edges), edge.y));
                 tripletList.push_back(Eigen::Triplet<float>(i, (i * 3 + 5) % (3 * num_edges), edge.z));
             }
-
+            constraintGrad.setFromTriplets(tripletList.begin(), tripletList.end());
             // 100 * 300
             Eigen::SparseMatrix<float> constraintGradT = constraintGrad.transpose();
 
             Eigen::SparseLU<Eigen::SparseMatrix<float>> MinvDCsolver;
             MinvDCsolver.compute(Mass);
             if (MinvDCsolver.info() != Eigen::Success) {
-                return;
+                std::cout << "MinvDCsolver decomposition failed" << std::endl;
             }
 
-            // 300 * 100 
+            // 300 * 100
             Eigen::SparseMatrix<float> MinvDC = MinvDCsolver.solve(constraintGradT);
             if (MinvDCsolver.info() != Eigen::Success) {
-                return;
+                std::cout << "MinvDCsolver solve failed" << std::endl;
             }
-            // 100 * 100 
+            // 100 * 100
             Eigen::SparseMatrix<float> DCMinvDC = constraintGrad * MinvDC;
             Eigen::SparseLU<Eigen::SparseMatrix<float>> dLambdasolver;
             dLambdasolver.compute(DCMinvDC);
             if (dLambdasolver.info() != Eigen::Success) {
-                return;
+                std::cout << "dLambdasolver decomposition failed" << std::endl;
             }
+
             // 100 *1
             Eigen::MatrixXf dLambda = dLambdasolver.solve(constraintMatrix);
             if (MinvDCsolver.info() != Eigen::Success) {
-                return;
+                std::cout << "dLambdasolver solve failed" << std::endl;
             }
 
             // 300 * 1
-            auto dxmatrix = -MinvDC * dLambda;
+            auto dxmatrix = -1 * MinvDC * dLambda;
 
             // reshape
             std::vector<point> dx;
             for (size_t i = 0; i < num_controlpoints; i++) {
-                dx.push_back(point(dxmatrix(i * 3), dxmatrix(i * 3 + 1), dxmatrix(i * 3 + 2)));
+                point p = point(dxmatrix(i * 3), dxmatrix(i * 3 + 1), dxmatrix(i * 3 + 2));
+                dx.push_back(p);
+                std::cout << "dx at "<< i  << ": "<< p << std::endl;
             }
+            
+            break;
             for (size_t i = 0; i < num_controlpoints; i++) {
                 newpoints[i] = newpoints[i] + dx[i];
             }
@@ -337,21 +333,22 @@ class Curven {
             std::transform(constraint.begin(), constraint.end(), abs_con.begin(),
                            [](float value) { return std::abs(value); });
             max = *std::max_element(abs_con.begin(), abs_con.end());
+            std::cout << "curmax:" << max << std::endl;
         }
 
-      
+
         controlpoints = newpoints;
         curveEdges = newedges;
         edge_length = newedge_length;
 
         for (size_t i = 0; i < num_edges; i++) {
-            velocity[i] = (newpoints[i] - controlpoints[i])/dt;
+            velocity[i] = (newpoints[i] - controlpoints[i]) / dt;
         }
     }
 
     void loop() {
 
-        for (size_t i = 0; i < 1000; i++) {
+        for (size_t i = 0; i < 1; i++) {
             cal_velocity();
             fastprojection();
 
@@ -361,10 +358,10 @@ class Curven {
             cal_attrs();
             calforce();
             // std::cout << "iter " << i << "done" <<std::endl;
-            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
         std::cout << "done" << std::endl;
-          curve->updateNodePositions(controlpoints);
+        curve->updateNodePositions(controlpoints);
     }
 
 
@@ -377,9 +374,10 @@ class Curven {
     float alpha = 1;
     float beta = 1;
     float dt = 0.001;
+    size_t nSamples = 100;
 
     const point reference = point(0, 0, 1);
-    float totaltwist = 10 * PI;
+    float totaltwist = PI;
     float totallength;
 
     std::vector<point> controlpoints;

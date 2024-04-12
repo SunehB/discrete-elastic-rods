@@ -38,17 +38,17 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             curveData.v(1, 1:end-1), curveData.v(2, 1:end-1), curveData.v(3, 1:end-1),...
             'color','blue','linewidth',1);
     view(3); 
-    axis image vis3d manual off;
+    % axis image vis3d manual off;
     ax = gca;
     ax.Clipping = 'off';
     
-    for i = 1:1000
+    for i = 1:1
         bendForce = computeBendForce(curveData);
         % disp(bendForce);
-        disp(max(max(abs(bendForce))));
+        % disp(max(max(abs(bendForce))));
         twistForce = computeTwistForce(curveData);
         % disp(twistForce)/
-         disp(max(max(abs(twistForce))));
+        %  disp(max(max(abs(twistForce))));
         totalForce = bendModulus * bendForce + twistModulus * twistForce;
         totalAcceleration = totalForce ./ curveData.dualLengths;
         % disp(totalForce);
@@ -59,14 +59,14 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         newCurveData.velocities = velocities;
         newCurveData = prepare(newCurveData);
         newCurveData = updateTwist(newCurveData, curveData);
-        disp(newCurveData.totalTwist);
+        % disp(newCurveData.totalTwist);
         % if(max(abs(bendForce))<1e-5)
         %     break
         % end 
         newCurveData = updateMaterialFrame(newCurveData);
         curveData = newCurveData;
         
-        if mod(i - 1, 40) == 0
+        % if mod(i - 1, 40) == 0
             pause(0.001);
             cla;
             patch('Faces', links, 'Vertices', curveData.verts.', 'LineWidth', 3, 'EdgeColor', 'black'); hold on;
@@ -76,7 +76,7 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             quiver3(curveData.midpointsR(1, :), curveData.midpointsR(2, :), curveData.midpointsR(3, :),...
             curveData.v(1, 1:end-1), curveData.v(2, 1:end-1), curveData.v(3, 1:end-1),...
             'color','blue','linewidth',1);
-        end
+        % end
     end
     
     function curveData = prepare(curveData)
@@ -185,7 +185,6 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             end
             bendForce(:,i) = -1 * bendForce(:,i);
         end
-        % disp( bendForce);
     end
     %%% END HOMEWORK PROBLEM
     
@@ -219,12 +218,16 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         while max(abs(constraint)) > 1e-10
             constraintGrad = 2 * sparse(DCii, DCjj, [-edgesR.' edgesR.'], nSamples, 3 * nSamples);
             MinvDC = M \ constraintGrad';
+            % disp(size(constraintGrad));
             DCMinvDC = constraintGrad * MinvDC;
             dLambda = DCMinvDC \ constraint;
             dx = -reshape(MinvDC * dLambda, 3, nSamples);
+            disp(dx);
             verts = verts + dx;
             edgesR = circshift(verts, -1, 2) - verts;
             constraint = (sum(edgesR.^2, 1) - lengthsR.^2).';
+            % disp(max(abs(constraint)));
+            break;
         end
         velocities = (verts - verts0) / dt;
     end
