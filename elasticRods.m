@@ -38,17 +38,17 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             curveData.v(1, 1:end-1), curveData.v(2, 1:end-1), curveData.v(3, 1:end-1),...
             'color','blue','linewidth',1);
     view(3); 
-    % axis image vis3d manual off;
+    axis image vis3d manual off;
     ax = gca;
     ax.Clipping = 'off';
     
-    for i = 1:10000
+    for i = 1:1000
         bendForce = computeBendForce(curveData);
         % disp(bendForce);
         disp(max(max(abs(bendForce))));
         twistForce = computeTwistForce(curveData);
         % disp(twistForce)/
-         % disp(max(max(abs(twistForce))));
+         disp(max(max(abs(twistForce))));
         totalForce = bendModulus * bendForce + twistModulus * twistForce;
         totalAcceleration = totalForce ./ curveData.dualLengths;
         % disp(totalForce);
@@ -59,14 +59,14 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         newCurveData.velocities = velocities;
         newCurveData = prepare(newCurveData);
         newCurveData = updateTwist(newCurveData, curveData);
-        % disp(newCurveData.totalTwist);
+        disp(newCurveData.totalTwist);
         % if(max(abs(bendForce))<1e-5)
         %     break
         % end 
         newCurveData = updateMaterialFrame(newCurveData);
         curveData = newCurveData;
         
-        % if mod(i - 1, 40) == 0
+        if mod(i - 1, 40) == 0
             pause(0.001);
             cla;
             patch('Faces', links, 'Vertices', curveData.verts.', 'LineWidth', 3, 'EdgeColor', 'black'); hold on;
@@ -76,7 +76,7 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             quiver3(curveData.midpointsR(1, :), curveData.midpointsR(2, :), curveData.midpointsR(3, :),...
             curveData.v(1, 1:end-1), curveData.v(2, 1:end-1), curveData.v(3, 1:end-1),...
             'color','blue','linewidth',1);
-        % end
+        end
     end
     
     function curveData = prepare(curveData)
@@ -149,7 +149,7 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         
         holonomy = (timePt * oldCurveData.bishopFrame(:, :, nSamples + 1))' * newCurveData.bishopFrame(:, :, nSamples + 1);
         holonomyAngle = atan2(holonomy(2, 1), holonomy(1, 1));
-        newCurveData.totalTwist = oldCurveData.totalTwist - holonomyAngle;
+        newCurveData.totalTwist = oldCurveData.totalTwist;
     end
     
     function curveData = updateMaterialFrame(curveData)
@@ -171,19 +171,17 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
                 ejl= curveData.edgeLengthsR(:,j);
                 ejm1l= curveData.edgeLengthsL(:,j);
                 w = 0.5 * curveData.dualLengths(:,j);
-                coeff = 2/(w*(ejl.*ejm1l+dot(ej,ejm1)));
-                
+                coeff = -2/(w*(ejl.*ejm1l+dot(ej,ejm1)));
+            
                 kbj = curveData.curvatureBinormals(:,j);
                 if i==j-1
-                    dkb = 2*cross(-ej,kbj)+kbj*ej.'*kbj;
-                    bendForce(:,i)=bendForce(:,i)+coeff * dkb;
+                    dkb = 2*cross(ej,kbj)+((kbj*ej.').'*kbj);
                 elseif i == j+1 
-                    dkb = 2*cross(-ejm1,kbj)-kbj*ejm1.'*kbj;
-                    bendForce(:,i)=bendForce(:,i)+ coeff * dkb;
+                    dkb = 2*cross(ejm1,kbj)-(kbj*ejm1.').'*kbj;
                 elseif i==j 
-                    dkb = -(2*cross(-ej,kbj)+kbj*ej.'*kbj + 2*cross(-ejm1,kbj)-kbj*ejm1.'*kbj);
-                    bendForce(:,i)=bendForce(:,i)+ coeff * dkb;
+                    dkb = -(2*cross(ej,kbj)+(kbj*ej.').'*kbj + 2*cross(ejm1,kbj)-(kbj*ejm1.').'*kbj);
                 end
+                bendForce(:,i)=bendForce(:,i)+ coeff * dkb;
             end
             bendForce(:,i) = -1 * bendForce(:,i);
         end
@@ -198,11 +196,11 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             ejl= curveData.edgeLengthsR(:,i);
             ejm1l= curveData.edgeLengthsL(:,i);
             kb = curveData.curvatureBinormals(:,i);
-    
+        
             dprev = 0.5 * kb / ejm1l;
             dnext = -0.5 * kb / ejl;
             L= 0.5 * curveData.totalLength;
-            twistForce(:,i) =  -1  * curveData.totalTwist * (dprev + dnext)/L; 
+            twistForce(:,i) = -1 * curveData.totalTwist * (dprev + dnext)/L; 
         end 
     end
     %%% END HOMEWORK PROBLEM
