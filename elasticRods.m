@@ -14,13 +14,22 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
     curveData.totalTwist = totalTwist;
     curveData.velocities = zeros(3, nSamples);
     curveData = prepare(curveData);
+    % disp(curveData.curvatureBinormals);
+
+
     
     % Set up Bishop frame
     u0 = cross(curveData.tangentsR(:, 1), [0; 0; 1]);
     u0 = u0 ./ sqrt(sum(u0.^2));
     v0 = cross(curveData.tangentsR(:, 1), u0);
     v0 = v0 ./ sqrt(sum(v0.^2));
+    % disp(u0);
+    % disp(v0);
     curveData.bishopFrame = propagateBishopFrame(curveData, [u0 v0]);
+    % disp(size(curveData.bishopFrame));
+    % slice1 = curveData.bishopFrame (:, 1, :);
+    % disp('第二维的第1个切片（2x13）:');
+    % disp(reshape(slice1, 3, 13));
     curveData = updateMaterialFrame(curveData);
     
     links = [(1:nSamples).' circshift((1:nSamples).', -1)];
@@ -42,18 +51,19 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
     ax = gca;
     ax.Clipping = 'off';
     
-    for i = 1:1
+    for i = 1:1000
         bendForce = computeBendForce(curveData);
         % disp(bendForce);
-        % disp(max(max(abs(bendForce))));
+        % disp(max((max(bendForce))));
         twistForce = computeTwistForce(curveData);
         % disp(twistForce)/
-        %  disp(max(max(abs(twistForce))));
+        % disp(max(max(abs(twistForce))));
         totalForce = bendModulus * bendForce + twistModulus * twistForce;
         totalAcceleration = totalForce ./ curveData.dualLengths;
         % disp(totalForce);
     
-        [verts, velocities] = symplecticEuler(curveData.verts, curveData.velocities, totalAcceleration, dt);
+        verts = symplecticEuler(curveData.verts, curveData.velocities, totalAcceleration, dt);
+        % disp(verts);
         [verts, velocities] = fastProjection(curveData.verts, verts, curveData.dualLengths, curveData.edgeLengthsR, dt);
         newCurveData.verts = verts;
         newCurveData.velocities = velocities;
@@ -119,8 +129,9 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             end
     
             axis = cross(t_i, t_next);
+            
             theta = atan2(norm(axis), dot(t_i, t_next));
-    
+            % disp(theta);
             % K = [0, -axis(3), axis(2); axis(3), 0, -axis(1); -axis(2), axis(1), 0];
             % parallelTransport(:, :, i) = eye(3) + sin(theta) * K + (1 - cos(theta)) * K^2;
             if norm(axis) ~= 0
@@ -129,6 +140,7 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             else
                 parallelTransport(:, :, i) = eye(3);
             end
+            % disp(parallelTransport(:, :, i));
         end
         %%% END HOMEWORK PROBLEM
         
@@ -136,7 +148,9 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         bishopFrame(:, :, 1) = startFrame;
         for j=2:(nSamples + 1)
             ptIdx = mod(j - 1, nSamples) + 1;
+            % disp(ptIdx);
             bishopFrame(:, :, j) = parallelTransport(:, :, ptIdx) * bishopFrame(:, :, j - 1);
+            % disp(bishopFrame(:,:,j));
         end
     end
     
@@ -170,10 +184,14 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
                 ejm1 = curveData.edgesL(:,j);
                 ejl= curveData.edgeLengthsR(:,j);
                 ejm1l= curveData.edgeLengthsL(:,j);
-                w = 0.5 * curveData.dualLengths(:,j);
+                w = 0.5* curveData.dualLengths(:,j);
                 coeff = -2/(w*(ejl.*ejm1l+dot(ej,ejm1)));
-            
+                % disp(coeff);
                 kbj = curveData.curvatureBinormals(:,j);
+                % disp(((kbj*ej.').'));
+                % disp(((kbj*ej.').')*kbj);
+                % disp((kbj*ejm1.').'*kbj);
+                % disp((kbj));
                 if i==j-1
                     dkb = 2*cross(ej,kbj)+((kbj*ej.').'*kbj);
                 elseif i == j+1 
@@ -181,9 +199,11 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
                 elseif i==j 
                     dkb = -(2*cross(ej,kbj)+(kbj*ej.').'*kbj + 2*cross(ejm1,kbj)-(kbj*ejm1.').'*kbj);
                 end
+                % disp(dkb)
                 bendForce(:,i)=bendForce(:,i)+ coeff * dkb;
             end
             bendForce(:,i) = -1 * bendForce(:,i);
+            % disp(bendForce(:,i));
         end
     end
     %%% END HOMEWORK PROBLEM
@@ -200,14 +220,18 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             dnext = -0.5 * kb / ejl;
             L= 0.5 * curveData.totalLength;
             twistForce(:,i) = -1 * curveData.totalTwist * (dprev + dnext)/L; 
+            % disp(twistForce(:,i));
         end 
     end
     %%% END HOMEWORK PROBLEM
     
-    function [verts, velocities] = symplecticEuler(verts0, velocities0, totalAcceleration, dt)
+    function verts = symplecticEuler(verts0, velocities0, totalAcceleration, dt)
         % Update velocities and positions via Symplectic Euler Integration
         velocities = velocities0 + dt * totalAcceleration;
+        % disp(velocities);
+        % disp(totalAcceleration)
         verts = verts0 + dt * velocities;
+        % disp(verts)
     end
     
     function [verts, velocities] = fastProjection(verts0, verts, mass, lengthsR, dt)
@@ -215,19 +239,26 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         M = spdiags(repelem(reshape(mass, nSamples, 1), 3, 1), 0, 3 * nSamples, 3 * nSamples);
         edgesR = circshift(verts, -1, 2) - verts;
         constraint = (sum(edgesR.^2, 1) - lengthsR.^2).';
+        % disp(sum(edgesR.^2, 1));
+        % disp(max(abs(constraint)));
         while max(abs(constraint)) > 1e-10
+            % disp(edgesR);
             constraintGrad = 2 * sparse(DCii, DCjj, [-edgesR.' edgesR.'], nSamples, 3 * nSamples);
             MinvDC = M \ constraintGrad';
             % disp(size(constraintGrad));
             DCMinvDC = constraintGrad * MinvDC;
             dLambda = DCMinvDC \ constraint;
             dx = -reshape(MinvDC * dLambda, 3, nSamples);
-            disp(dx);
+            % disp(dx);
             verts = verts + dx;
             edgesR = circshift(verts, -1, 2) - verts;
             constraint = (sum(edgesR.^2, 1) - lengthsR.^2).';
-            % disp(max(abs(constraint)));
-            break;
+            % disp("verts");
+            % disp(verts);
+            % disp("edgesR");
+            % disp(edgesR);
+            disp(max(abs(constraint)));
+            % break;
         end
         velocities = (verts - verts0) / dt;
     end
