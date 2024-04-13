@@ -75,6 +75,7 @@ endif()
 # Edit files to build here.
 set(SRCS 
   src/main.cpp
+  src/include/Curve.cpp
 #   src/tree-cotree.cpp
 #   src/harmonic-bases.cpp
 #   src/hodge-decomposition.cpp
@@ -89,9 +90,19 @@ set(SRCS
 #   ../../utils/src/solvers.cpp
 #   src/test-decomp.cpp
 # )
+list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/share/eigen3/cmake")
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/deps/geometry-central)
+# 寻找 Eigen3
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
+# 检查是否找到 Eigen
+if(NOT Eigen3_FOUND)
+    message(FATAL_ERROR "Eigen not found")
+endif()
+# add_subdirectory(${CMAKE_SOURCE_DIR}/deps/geometry-central)
 add_subdirectory(${CMAKE_SOURCE_DIR}/deps/polyscope)
+# find_library(Eigen NAMES eigen PATHS /opt/homebrew/lib /usr/local/lib)
+# add_compile_definitions()
 
 find_path(SUITESPARSE_INCLUDE_DIR SuiteSparse_config.h
           PATHS /opt/homebrew/include /usr/local/include)
@@ -103,10 +114,24 @@ find_path(SUITESPARSE_INCLUDE_DIR NAMES SuiteSparse_config.h PATHS /opt/homebrew
 include_directories(${SUITESPARSE_INCLUDE_DIR})
 
 find_library(CHOLMOD_LIBRARY NAMES cholmod PATHS /opt/homebrew/lib /usr/local/lib)
+# find_package(SuiteSparse QUIET)
 
-
+# find_package(SuiteSparse CONFIG QUIET)
+# if(SuiteSparse_FOUND)
+  add_definitions(-DUSE_SUITESPARSE)
+  message(STATUS "Using SuiteSparse: ${SuiteSparse_VERSION}")
+  include_directories(${SuiteSparse_INCLUDE_DIRS})
+  link_libraries(${SuiteSparse_LIBRARIES})
+# else()
+  # message(STATUS "SuiteSparse not found, using Eigen for solvers")
+# endif()
 
 # add_subdirectory(../../deps/googletest deps/googletest)
+
+find_library(CHOLMOD_LIBRARY NAMES cholmod PATHS /opt/homebrew/lib /usr/local/lib REQUIRED)
+find_library(AMD_LIBRARY NAMES amd PATHS /opt/homebrew/lib /usr/local/lib REQUIRED)
+find_library(COLAMD_LIBRARY NAMES colamd PATHS /opt/homebrew/lib /usr/local/lib REQUIRED)
+
 
 # Change the executable name by changing "DER" in the lines below.
 add_executable(DER "${SRCS}")
@@ -116,8 +141,19 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT D
 # target_include_directories(DER PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../poisson-problem/include")
 # add the args.hxx project which we use for command line args
 # target_include_directories(DER PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../../deps/polyscope/deps/args")
-target_link_libraries(DER geometry-central polyscope)
-target_include_directories(DER PRIVATE /opt/homebrew/include/suitesparse)
+target_link_libraries(DER  polyscope Eigen3::Eigen
+${CHOLMOD_LIBRARY}
+${AMD_LIBRARY}
+${COLAMD_LIBRARY})
+
+# target_link_libraries(DER PUBLIC 
+
+#   # 其他依赖库
+# )
+# if(SuiteSparse_FOUND)
+# target_link_directories(DER PUBLIC ${SuiteSparse_INCLUDE_DIRS})
+# target_link_libraries(DER ${SuiteSparse_LIBRARIES})
+# endif()
 # add_executable(test-decomp "${TEST_SRCS}")
 # target_include_directories(test-decomp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 # target_include_directories(test-decomp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include")

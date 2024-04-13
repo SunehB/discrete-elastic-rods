@@ -6,7 +6,7 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
         totalTwist (1, 1) double =  pi
     end
     
-    nSamples = 100;
+    nSamples = 12;
     dt = 0.001;
     curveFunction = @(t) [cos(2 * pi * t); sin(2 * pi * t); 0.3 * sin(4 * pi * t)];
     curveData.verts = curveFunction(linspace(0, 1, nSamples + 1));
@@ -50,33 +50,41 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
     % axis image vis3d manual off;
     ax = gca;
     ax.Clipping = 'off';
-    
-    for i = 1:1000
+      
+    numit = 1;
+    totalEnergyMa = zeros(1, numit);
+    bendingEnergyMa = zeros(1, numit);
+    twistEnergyMa = zeros(1, numit);
+    kineticEnergyMa = zeros(1, numit);
+
+
+    for iter = 1:numit
+        disp(iter);
         bendForce = computeBendForce(curveData);
         % disp(bendForce);
         % disp(max((max(bendForce))));
         twistForce = computeTwistForce(curveData);
-        % disp(twistForce)/
+        % disp(twistForce)
         % disp(max(max(abs(twistForce))));
         totalForce = bendModulus * bendForce + twistModulus * twistForce;
         totalAcceleration = totalForce ./ curveData.dualLengths;
-        % disp(totalForce);
-    
+
         verts = symplecticEuler(curveData.verts, curveData.velocities, totalAcceleration, dt);
-        % disp(verts);
         [verts, velocities] = fastProjection(curveData.verts, verts, curveData.dualLengths, curveData.edgeLengthsR, dt);
         newCurveData.verts = verts;
         newCurveData.velocities = velocities;
         newCurveData = prepare(newCurveData);
         newCurveData = updateTwist(newCurveData, curveData);
-        % disp(newCurveData.totalTwist);
-        % if(max(abs(bendForce))<1e-5)
-        %     break
-        % end 
         newCurveData = updateMaterialFrame(newCurveData);
         curveData = newCurveData;
+
+        [totalEnergy, bendingEnergy, twistEnergy, kineticEnergy] = computeEnergy(curveData);
+        totalEnergyMa(iter) = log(totalEnergy);
+        bendingEnergyMa(iter) = bendingEnergy;
+        twistEnergyMa(iter) = twistEnergy;
+        kineticEnergyMa(iter) = log(kineticEnergy);
         
-        % if mod(i - 1, 40) == 0
+        % if mod(iter - 1, 40) == 0
             pause(0.001);
             cla;
             patch('Faces', links, 'Vertices', curveData.verts.', 'LineWidth', 3, 'EdgeColor', 'black'); hold on;
@@ -88,6 +96,17 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             'color','blue','linewidth',1);
         % end
     end
+
+    % figure;
+    % hold on;
+    % % plot(totalEnergyMa, 'DisplayName', 'Total Energy');
+    % plot(bendingEnergyMa, 'DisplayName', 'Bending Energy');
+    % plot(twistEnergyMa, 'DisplayName', 'Twist Energy');
+    % % plot(kineticEnergyMa, 'DisplayName', 'Kinetic Energy');
+    % legend show;
+    % title('Energy over Iterations');
+    % xlabel('Iteration');
+    % ylabel('Energy');
     
     function curveData = prepare(curveData)
         % Basic closed curve
@@ -228,19 +247,21 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
     function verts = symplecticEuler(verts0, velocities0, totalAcceleration, dt)
         % Update velocities and positions via Symplectic Euler Integration
         velocities = velocities0 + dt * totalAcceleration;
-        % disp(velocities);
-        % disp(totalAcceleration)
+        disp(velocities);
+        disp(totalAcceleration)
         verts = verts0 + dt * velocities;
         % disp(verts)
     end
     
     function [verts, velocities] = fastProjection(verts0, verts, mass, lengthsR, dt)
         % Project positions to satisfy length constraints
+        % disp(verts);
         M = spdiags(repelem(reshape(mass, nSamples, 1), 3, 1), 0, 3 * nSamples, 3 * nSamples);
         edgesR = circshift(verts, -1, 2) - verts;
         constraint = (sum(edgesR.^2, 1) - lengthsR.^2).';
         % disp(sum(edgesR.^2, 1));
-        % disp(max(abs(constraint)));
+        % disp(constraint);
+        disp(max(abs(constraint)));
         while max(abs(constraint)) > 1e-10
             % disp(edgesR);
             constraintGrad = 2 * sparse(DCii, DCjj, [-edgesR.' edgesR.'], nSamples, 3 * nSamples);
@@ -258,7 +279,7 @@ function elasticRods(bendModulus, twistModulus, totalTwist)
             % disp("edgesR");
             % disp(edgesR);
             disp(max(abs(constraint)));
-            % break;
+            break;
         end
         velocities = (verts - verts0) / dt;
     end
