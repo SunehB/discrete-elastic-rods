@@ -8,8 +8,8 @@ static float alpha = 1.f;
 static float beta = 1.f;
 static float dt = 0.001f;
 static float totaltwist = 0.0f;
-static int nSample = 100;
-static int nIteration = 100;
+static int nSample = 12;
+static int nIteration = 1;
 static Curve cur;
 
 void DERcallback() {

@@ -1,4 +1,5 @@
 #include "polyscope/curve_network.h"
+#include "polyscope/utilities.h"
 #include <Eigen/Sparse>
 
 #include <vector>
@@ -27,6 +28,7 @@ class Curve {
         binormal_on_edges.resize(num_edges);
         curvature.resize(num_controlpoints);
         darboux.resize(num_controlpoints);
+        darbouxdenom.resize(num_controlpoints);
         vertex_weight.resize(num_controlpoints);
 
         twist_thetas.resize(num_edges);
@@ -122,7 +124,7 @@ class Curve {
 
     void cal_attrs();
 
-    dmat3 outerProduct(const vec3& A, const vec3& B) {
+    dmat3 outeraroduct(const vec3& A, const vec3& B) {
         dmat3 result;
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
@@ -227,18 +229,19 @@ class Curve {
     double eps = 1e-6;
 
     double alpha = 1;
-    double beta = 1;
+    double beta = 10;
     double dt = 1e-3;
     size_t nSamples = 100;
 
     const point reference = point(0, 0, 1);
-    double totaltwist = PI;
+    double totaltwist = 2* PI;
     double totallength;
 
     std::vector<point> controlpoints;
     std::vector<std::vector<size_t>> curveEdgesId;
     std::vector<point> curveEdges;
     std::vector<double> edge_length;
+    std::vector<double> dual_length;
     CurveNetwork* curve;
 
     std::vector<double> arc_length;
@@ -260,6 +263,7 @@ class Curve {
 
 
     std::vector<point> darboux;
+    std::vector<double> darbouxdenom;
     std::vector<double> vertex_weight;
     std::vector<point> bending_force;
     std::vector<point> twisting_force;

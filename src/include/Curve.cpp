@@ -1,4 +1,6 @@
 #include "Curve.h"
+#include "glm/fwd.hpp"
+#include "glm/matrix.hpp"
 #include <algorithm>
 #include <iostream>
 // #ifdef USE_SUITESPARSE
@@ -58,78 +60,78 @@ void Curve::cal_attrs() {
         point Redge = curveEdges[(i) % num_controlpoints];
 
         vertex_weight[i] = 0.5 * (length(Ledge) + length(Redge));
-
-        darboux[i] = 2.0 * cross(Ledge, Redge) / (length(Ledge) * length(Redge) + dot(Ledge, Redge));
-        // std::cout << "darboux at " << i << ": " << darboux[i] << std::endl;
+        darbouxdenom[i] = length(Ledge) * length(Redge) + dot(Ledge, Redge);
+        darboux[i] = 2.0 * cross(Ledge, Redge) /  darbouxdenom[i];
         curvature[i] = sqrt(dot(darboux[i], darboux[i]));
-        // std::cout << "curvature at " << i << ": " << curvature[i] << std::endl;
     }
     curve->addNodeScalarQuantity("vertex_weight", vertex_weight);
     curve->addNodeScalarQuantity("curvature", curvature);
     curve->addNodeVectorQuantity("darboux", darboux);
 }
 
+dmat3 skew(point v) {
+    return dmat3(0, -v.z, v.y, v.z, 0, -v.x, -v.y, v.x, 0);
+}
+
+point mul(dmat3 m, point v){
+    return point (m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z, m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z, m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z); 
+}
 
 void Curve::cal_bending_force() {
     bending_force.clear();
     bending_force.resize(num_controlpoints);
+    for (size_t j = 0; j < num_controlpoints; j++) {
+        size_t cur_idx = j;
+        size_t prev_idx = (j - 1 + num_controlpoints) % num_controlpoints;
+        size_t next_idx = (j + 1) % num_controlpoints;
 
-    for (size_t i = 0; i < num_controlpoints; i++) {
-        for (size_t j = 0; j < num_controlpoints; j++) {
-            point edgeR = curveEdges[j];
-            point edgeL = curveEdges[(j - 1 + num_controlpoints) % num_controlpoints];
+        auto cur = curveEdges[cur_idx];
+        auto prev = curveEdges[prev_idx];
+        auto next = curveEdges[next_idx];
 
-            dmat3 Rmatrix = transpoe(edgeR);
-            dmat3 Lmatrix = transpoe(edgeL);
+        double denom = darbouxdenom[cur_idx];
+        // std::cout << "denom " << denom << std::endl;
 
-            dmat3 RT = transpose(Rmatrix);
-            dmat3 LT = transpose(Lmatrix);
+        double l = 2 * vertex_weight[prev_idx];
+        point kb = darboux[prev_idx];
+        dmat3 grad_prev = (2.0 * skew(cur) + outerProduct(cur, kb))/denom;
+        point bend_prev = -2 / l * mul(transpose(grad_prev) ,kb);
+        
+        // std::cout << "u" << u[0] << " " << u[1] << " " << u[2] << std::endl;
+        // // std::cout << "grad_prev" << std::endl;
+        // // for (size_t i = 0; i < 3; i++) {
+        // //     for( size_t j = 0; j < 3; j++) {
+        // //         std::cout << (grad_prev)[i][j] << " ";
+        // //     }
+        // //     std::cout << std::endl;
+        // // }
+        // std::cout << "transpose(grad_prev)" << std::endl;
+        // for (size_t i = 0; i < 3; i++) {
+        //     for( size_t j = 0; j < 3; j++) {
+        //         std::cout << transpose(grad_prev)[i][j] << " ";
+        //     }
+        //     std::cout << std::endl;
+        // }
+        // std::cout << -2 / l << std::endl;
+        // std::cout << "kb" << kb[0] << " " << kb[1] << " " << kb[2] << std::endl;
+        // std::cout << "bend_prev " << bend_prev[0] << " " << bend_prev[1] << " " << bend_prev[2] << std::endl;
 
-            double w = 0.5f * vertex_weight[j];
-            auto coeff = -2 / (w * (length(edgeR) * length(edgeL) + dot(edgeR, edgeL)));
-            // std::cout << "coeff " << coeff << std::endl;
-            auto kbj = darboux[j];
-            // dmat3 kbjT = transpose(transpoe(kbj));
-            dmat3 kbjTR = outerProduct(kbj, edgeR);
-            dmat3 kbjTRT = transpose(kbjTR);
+        l = 2 * vertex_weight[next_idx];
+        kb = darboux[next_idx];
+        auto grad_next = (2.0 * skew(prev) - outerProduct(prev, kb))/denom;
+        auto bend_next = -2 / l * mul(transpose(grad_next) , kb);
+        // std::cout << "bend_next " << bend_next[0] << " " << bend_next[1] << " " << bend_next[2] << std::endl;
 
-            dmat3 kbjTL = outerProduct(kbj, edgeL);
-            dmat3 kbjTLT = transpose(kbjTL);
-            // for (int i = 0; i < 3; ++i) {
-            //     for (int j = 0; j < 3; ++j) {
-            //         std::cout << kbjTRT[i][j] << " ";
-            //     }
-            // }
-            // std::cout << std::endl;
-            point kbjTRTkbj = dmat3vec3(kbjTRT, kbj);
-            point kbjTLTkbj = dmat3vec3(kbjTLT, kbj);
-            // std::cout << " kbj " << kbjTRTkbj << std::endl;
-            // std::cout << " kbj " << kbjTLTkbj << std::endl;
-            point p;
-            if (i == j - 1) {
-                p = 2.0 * cross(edgeR, kbj) + kbjTRTkbj;
-            } else if (i == j) {
-                p = -1.0 * (2.0 * cross(edgeR, kbj) + kbjTRTkbj + 2.0 * cross(edgeL, kbj) - kbjTLTkbj);
-            } else if (i == j + 1) {
-                p = 2.0 * cross(edgeL, kbj) - kbjTLTkbj;
-            }
-            bending_force[i] += p * coeff;
-            // std::cout << "bending force " << p << std::endl;
-        }
-        bending_force[i] *= -1;
-        // std::cout << "bending force " << bending_force[i] << std::endl;
+        l = 2 * vertex_weight[cur_idx];
+        kb = darboux[cur_idx];
+        auto grad_cur = -(grad_prev + grad_next);
+        auto bend_cur = -2 / l * mul(transpose(grad_cur) , kb);
+        // std::cout << "bend_cur " << bend_cur[0] << " " << bend_cur[1] << " " << bend_cur[2] << std::endl;
+
+        bending_force[cur_idx] = (bend_prev + bend_cur + bend_next);
+        std::cout << "bending_force " << bending_force[cur_idx][0] << " " << bending_force[cur_idx][1] << " " << bending_force[cur_idx][2] << std::endl;
     }
-    // std::cout << "bending force " << bending_force[0] << std::endl;
     curve->addNodeVectorQuantity("bending force", bending_force);
-
-    // auto maxlist = std::transform(bending_force.begin(), bending_force.end(), [](point a, point b) {
-    //     return length(a) < length(b);
-    // });
-    // auto max  = *std::max_element(bending_force.begin(), bending_force.end(), [](point a, point b) {
-    //     return length(a) > length(b);
-    // });
-    // std::cout << "max bending force: " << max << std::endl;
-    // std::cout << "bending force done" << std::endl;
 }
 
 dmat3 transpoe(point v) {
@@ -140,13 +142,18 @@ void Curve::cal_twisting_force() {
     twisting_force.clear();
     twisting_force.resize(num_controlpoints);
 
-    for (size_t i = 0; i < num_controlpoints; i++) {
-        auto prevd = 0.5 * darboux[i] / edge_length[(i - 1 + num_controlpoints) % num_controlpoints];
-        auto nextd = -0.5 * darboux[i] / edge_length[i];
-        twisting_force[i] = -1 * totaltwist * (nextd + prevd + eps) / (0.5f * totallength);
-        // std::cout << "twisting force " << twisting_force[i] << std::endl;
-    }
-    curve->addNodeVectorQuantity("twisting force", twisting_force);
+    // for (size_t i = 0; i < num_controlpoints; i++) {
+    //     auto curr_idx = i;
+    //     auto kb = darboux[curr_idx];
+
+    //     auto grad_prev = 0.5 * kb / edge_length[curr_idx];
+    //     auto grad_next = -0.5 * kb / edge_length[i];
+
+    //     auto grad_cur = -(grad_prev + grad_next);
+
+    //     twisting_force[curr_idx] = (grad_prev + grad_cur + grad_next) * totaltwist / (0.5f * totallength);
+    // }
+    // curve->addNodeVectorQuantity("twisting force", twisting_force);
 }
 
 
@@ -242,8 +249,10 @@ void Curve::fastsuiteprojection() {
     std::cout << "good mass " << std::endl;
     while (max > 1e-10) {
         // 100 * 300
-        // cholmod_triplet* triplet = cholmod_l_allocate_triplet(num_edges, 3 * nSamples, 10 * num_edges, 0, CHOLMOD_REAL, &c);
-        cholmod_triplet* triplet = cholmod_allocate_triplet( num_edges, 3 * num_edges, 6 * num_edges, 0, CHOLMOD_REAL, &c);
+        // cholmod_triplet* triplet = cholmod_l_allocate_triplet(num_edges, 3 * nSamples, 10 * num_edges, 0,
+        // CHOLMOD_REAL, &c);
+        cholmod_triplet* triplet =
+            cholmod_allocate_triplet(num_edges, 3 * num_edges, 6 * num_edges, 0, CHOLMOD_REAL, &c);
         std::cout << " init good triplet " << std::endl;
         for (size_t k = 0; k < num_edges; k++) {
             point egde = newedges[k];
@@ -271,11 +280,12 @@ void Curve::fastsuiteprojection() {
             ((double*)triplet->x)[triplet->nnz++] = edge_y;
             ((long int*)triplet->i)[triplet->nnz] = k;
             ((long int*)triplet->j)[triplet->nnz] = (base_idx + 5) % (3 * nSamples);
-            ((double*)triplet->x)[triplet->nnz++] = edge_z;  ((long int*)triplet->i)[triplet->nnz] = k;
+            ((double*)triplet->x)[triplet->nnz++] = edge_z;
+            ((long int*)triplet->i)[triplet->nnz] = k;
         }
 
         cholmod_sparse* constraintGrad = cholmod_triplet_to_sparse(triplet, triplet->nnz, &c);
-        std::cout << "good constraintGrad " << std::endl;
+        // std::cout << "good constraintGrad " << std::endl;
 
         // 300 * 100
         cholmod_sparse* conGradT = cholmod_transpose(constraintGrad, 1, &c);
@@ -286,17 +296,17 @@ void Curve::fastsuiteprojection() {
         // 300 * 100
         cholmod_dense* MinvDC = cholmod_solve(CHOLMOD_A, factor, b, &c);
         cholmod_sparse* MinvDCSp = cholmod_dense_to_sparse(MinvDC, 1, &c);
-        std::cout << "good MinvDC " << std::endl;
+        // std::cout << "good MinvDC " << std::endl;
 
         // 100 * 100
         cholmod_sparse* DCMinvDC = cholmod_ssmult(constraintGrad, MinvDCSp, 0, 1, 1, &c);
         cholmod_factor* dLfactor = cholmod_analyze(DCMinvDC, &c);
         cholmod_factorize(DCMinvDC, dLfactor, &c);
-        std::cout << "good DCMinvDC " << std::endl;
+        // std::cout << "good DCMinvDC " << std::endl;
 
         // 100 * 1
         cholmod_dense* dLambda = cholmod_solve(CHOLMOD_A, dLfactor, con, &c);
-        std::cout << "good dLambda " << std::endl;
+        // std::cout << "good dLambda " << std::endl;
 
         // 300 * 1
         // Eigen::MatrixXd dxmatrix = -1.0 * MinvDC * dLambda;
@@ -341,7 +351,7 @@ void Curve::fastsuiteprojection() {
 }
 // #else
 void Curve::fastprojection() {
-     std::cout << "eigen" << std::endl;
+    //  std::cout << "eigen" << std::endl;
     // 100 * 1
     constraint.clear();
     constraint.resize(num_edges);
@@ -352,8 +362,9 @@ void Curve::fastprojection() {
     }
 
     std::vector<double> abs_con(constraint.size());
-    std::transform(constraint.begin(), constraint.end(), abs_con.begin(), [](double value) { return std::abs(value);
-    }); auto max = *std::max_element(abs_con.begin(), abs_con.end()); std::cout << "0max:" << max << std::endl;
+    std::transform(constraint.begin(), constraint.end(), abs_con.begin(), [](double value) { return std::abs(value); });
+    auto max = *std::max_element(abs_con.begin(), abs_con.end());
+    std::cout << "0max:" << max << std::endl;
 
     // 100 * 1
     Eigen::MatrixXd constraintMatrix(num_edges, 1);
