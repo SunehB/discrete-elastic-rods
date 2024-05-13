@@ -7,17 +7,133 @@
 using namespace polyscope;
 using namespace glm;
 
-// std::ostream& operator<<(std::ostream& os, const glm::dvec3& v) {
-//     os << "(" << v.x << ", " << v.y << ", " << v.z << ")";
-//     return os;
-// }
-
 class Curve {
     using point = dvec3;
 
   public:
     Curve(){};
     ~Curve(){};
+
+
+    size_t nSamples = 100;
+    bool closed = true;
+
+
+    void initcurve() {
+        double dx = 1.0 / nSamples;
+
+        for (size_t i = 0; i < nSamples; ++i) {
+            double t = i * dx;
+            point p;
+            p.x = cos(2 * M_PI * t);
+            p.y = sin(2 * M_PI * t);
+            p.z = 0.3 * sin(4 * M_PI * t);
+            controlpoints.push_back(p);
+        }
+
+        num_controlpoints = controlpoints.size();
+        num_edges = nSamples;
+        resize_vectors();
+
+        for (size_t i = 0; i < nSamples; i++) {
+            curveEdgesId.push_back({i, (i + 1) % nSamples});
+            curveEdges.push_back(controlpoints[(i + 1) % nSamples] - controlpoints[i]);
+            edge_length[i] = length(curveEdges[i]);
+        }
+        totallength = std::accumulate(edge_length.begin(), edge_length.end(), 0.0f);
+        for (size_t i = 0; i < nSamples; i++) {
+            arc_length[i] = std::accumulate(edge_length.begin(), edge_length.begin() + i, 0.0f);
+        }
+        curve = registerCurveNetwork("Spiral", controlpoints, curveEdgesId);
+
+        cal_tangent();
+        normal_on_edges[0] = normalize(cross(tangent_on_edges[0], reference));
+        binormal_on_edges[0] = normalize(cross(tangent_on_edges[0], normal_on_edges[0]));
+
+        for (size_t i = 1; i < num_edges; i++) {
+            point t_i = tangent_on_edges[i];
+            point t_i_1 = tangent_on_edges[(i - 1) % num_edges];
+            point axis = cross(t_i_1, t_i);
+            double theta = std::atan2(length(axis), dot(t_i_1, t_i));
+            dmat3 rotationMatrix = rotate(dmat4(1), theta, normalize(axis));
+            if (theta > 1e-10)
+                normal_on_edges[i] = normalize(rotationMatrix * normal_on_edges[i - 1]);
+            else
+                normal_on_edges[i] = normal_on_edges[i - 1];
+            rdy = true;
+        }
+        curve->addEdgeVectorQuantity("normal on edges", normal_on_edges);
+
+        for (size_t i = 1; i < num_edges; i++)
+            binormal_on_edges[i] = normalize(cross(tangent_on_edges[i], normal_on_edges[i]));
+
+        curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
+
+        update_material_frame();
+        cal_attrs();
+        cal_bending_force();
+        cal_twisting_force();
+    }
+
+    void init_catenary() {
+        double a = 10.0;                                // 控制悬链线弯曲程度的参数
+        double x_start = -15.0;                         // x的起始值
+        double x_end = 15.0;                            // x的结束值
+        double dx = (x_end - x_start) / (nSamples - 1); // x增量
+
+
+        for (size_t i = 0; i < nSamples; ++i) {
+            double x = x_start + i * dx;
+            point p;
+            p.x = x;
+            p.y = 0;
+            p.z = a * std::cosh(x / a);
+            controlpoints.push_back(p);
+        }
+
+        num_controlpoints = controlpoints.size();
+        num_edges = nSamples - 1;
+        resize_vectors();
+
+        for (size_t i = 0; i < num_edges; i++) {
+            curveEdgesId.push_back({i, i + 1});
+            curveEdges.push_back(controlpoints[i + 1] - controlpoints[i]);
+            edge_length[i] = length(curveEdges[i]);
+        }
+        totallength = std::accumulate(edge_length.begin(), edge_length.end(), 0.0f);
+        for (size_t i = 0; i < nSamples - 1; i++) {
+            arc_length[i] = std::accumulate(edge_length.begin(), edge_length.begin() + i, 0.0f);
+        }
+        curve = registerCurveNetwork("Catenary", controlpoints, curveEdgesId);
+
+        cal_tangent();
+        normal_on_edges[0] = normalize(cross(tangent_on_edges[0], reference));
+        binormal_on_edges[0] = normalize(cross(tangent_on_edges[0], normal_on_edges[0]));
+
+        for (size_t i = 1; i < num_edges; i++) {
+            point t_i = tangent_on_edges[i];
+            point t_i_1 = tangent_on_edges[(i - 1) % num_edges];
+            point axis = cross(t_i_1, t_i);
+            double theta = std::atan2(length(axis), dot(t_i_1, t_i));
+            dmat3 rotationMatrix = rotate(dmat4(1), theta, normalize(axis));
+            if (theta > 1e-10)
+                normal_on_edges[i] = normalize(rotationMatrix * normal_on_edges[i - 1]);
+            else
+                normal_on_edges[i] = normal_on_edges[i - 1];
+            rdy = true;
+        }
+        curve->addEdgeVectorQuantity("normal on edges", normal_on_edges);
+
+        for (size_t i = 1; i < num_edges; i++)
+            binormal_on_edges[i] = normalize(cross(tangent_on_edges[i], normal_on_edges[i]));
+
+        curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
+
+        update_material_frame();
+        cal_attrs();
+        cal_bending_force();
+        cal_twisting_force();
+    }
 
     void resize_vectors() {
         edge_length.resize(num_edges);
@@ -39,125 +155,25 @@ class Curve {
         acceleration.resize(num_controlpoints);
         bending_force.resize(num_controlpoints);
         twisting_force.resize(num_controlpoints);
+
+        newpoints.resize(num_controlpoints);
+        newedges.resize(num_edges);
+        newedge_length.resize(num_edges);
     }
-
-
-    void initcurve(int inputn) {
-        nSamples = inputn;
-        double dx = 1.0 / nSamples;
-
-        for (size_t i = 0; i < nSamples; ++i) {
-            double t = i * dx;
-            point p;
-            p.x = cos(2 * M_PI * t);
-            p.y = sin(2 * M_PI * t);
-            p.z = 0.3 * sin(4 * M_PI * t);
-            controlpoints.push_back(p);
-            // std::cout << "controlpoints " << i << ": " << p << std::endl;
-        }
-
-        num_controlpoints = controlpoints.size();
-        num_edges = nSamples;
-        resize_vectors();
-
-        for (size_t i = 0; i < nSamples; i++) {
-            curveEdgesId.push_back({i, (i + 1) % nSamples});
-            curveEdges.push_back(controlpoints[(i + 1) % nSamples] - controlpoints[i]);
-            edge_length[i] = length(curveEdges[i]);
-            // std::cout << "edge_length " << i << ": " << edge_length[i] << std::endl;
-        }
-        totallength = std::accumulate(edge_length.begin(), edge_length.end(), 0.0f);
-        for (size_t i = 0; i < nSamples; i++) {
-            arc_length[i] = std::accumulate(edge_length.begin(), edge_length.begin() + i, 0.0f);
-            // std::cout << "arc_length " << i << ": " << arc_length[i] << std::endl;
-        }
-        curve = registerCurveNetwork("Spiral", controlpoints, curveEdgesId);
-
-        cal_tangent();
-        normal_on_edges[0] = normalize(cross(tangent_on_edges[0], reference));
-        binormal_on_edges[0] = normalize(cross(tangent_on_edges[0], normal_on_edges[0]));
-        // std::cout << "normal on edges 0: " << normal_on_edges[0] << std::endl;
-        // std::cout << "binormal on edges 0: " << binormal_on_edges[0] << std::endl;
-        for (size_t i = 1; i < num_edges; i++) {
-            point t_i = tangent_on_edges[i];
-            point t_i_1 = tangent_on_edges[(i - 1) % num_edges];
-
-            point axis = cross(t_i_1, t_i);
-            // std::cout << "axis " << i << ": " << axis << std::endl;
-            double theta = std::atan2(length(axis), dot(t_i_1, t_i));
-            dmat3 rotationMatrix = rotate(dmat4(1), theta, normalize(axis));
-            // for (size_t j = 0; j < 3; j++) {
-            //     for (size_t k = 0; k < 3; k++) {
-            //         std::cout << rotationMatrix[j][k] << " ";
-            //     }
-            // }
-            // std::cout << "rotationMatrix "  << std::endl;
-            // std::cout << "theta " << i << ": " << theta << std::endl;
-            if (theta > 1e-10) {
-                normal_on_edges[i] = normalize(rotationMatrix * normal_on_edges[i - 1]);
-
-            } else {
-                normal_on_edges[i] = normal_on_edges[i - 1];
-            }
-            // std::cout << "normal on edges " << i << ": " << normal_on_edges[i] << std::endl;
-            rdy = true;
-        }
-        curve->addEdgeVectorQuantity("normal on edges", normal_on_edges);
-
-        for (size_t i = 1; i < num_edges; i++) {
-            binormal_on_edges[i] = normalize(cross(tangent_on_edges[i], normal_on_edges[i]));
-            // std::cout << "binormal on edges " << i << ": " << binormal_on_edges[i] << std::endl;
-        }
-        curve->addEdgeVectorQuantity("binormal on edges", binormal_on_edges);
-
-        update_material_frame();
-        cal_attrs();
-        cal_bending_force();
-        cal_twisting_force();
-    }
-
     void cal_tangent();
-
     void update_bishop();
-
     void update_material_frame();
-
     void cal_attrs();
-
-    dmat3 outeraroduct(const vec3& A, const vec3& B) {
-        dmat3 result;
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                result[i][j] = A[i] * B[j];
-            }
-        }
-        return result;
-    }
-
-    point dmat3vec3(const dmat3& A, const vec3& B) {
-        point result;
-        for (int i = 0; i < 3; ++i) {
-            result[i] = 0;
-            for (int j = 0; j < 3; ++j) {
-                result[i] += A[i][j] * B[j];
-            }
-        }
-        return result;
-    }
-
     void cal_bending_force();
-
-    dmat3 transpoe(point v) {
-        return dmat3(v.x, 0, 0, v.y, 0, 0, v.z, 0, 0);
-    }
-
     void cal_twisting_force();
-
-
     void cal_velocity();
-
     void fastprojection();
     void fastsuiteprojection();
+
+    dmat3 skew(point v) {
+        return dmat3(0, -v.z, v.y, v.z, 0, -v.x, -v.y, v.x, 0);
+    }
+
 
     void loop() {
         cal_velocity();
@@ -180,9 +196,7 @@ class Curve {
     void set_dt(double d) {
         dt = d;
     }
-    void set_nSamples(size_t n) {
-        nSamples = n;
-    }
+
     void set_totaltwist(double t) {
         totaltwist = t;
     }
@@ -214,12 +228,12 @@ class Curve {
         newedge_length.clear();
         constraint.clear();
 
-        initcurve(nSamples);
+        initcurve();
     }
 
     bool status() {
         return rdy;
-    }
+    };
 
   private:
     bool rdy = false;
@@ -229,12 +243,13 @@ class Curve {
     double eps = 1e-6;
 
     double alpha = 1;
-    double beta = 10;
-    double dt = 1e-3;
-    size_t nSamples = 100;
+    double beta = 1;
+    double dt = 0.1;
+
+    point last_tangent;
 
     const point reference = point(0, 0, 1);
-    double totaltwist = 2* PI;
+    double totaltwist = 2 * PI;
     double totallength;
 
     std::vector<point> controlpoints;

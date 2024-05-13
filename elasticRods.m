@@ -427,30 +427,37 @@ end
 %%% PROBLEM 3(c) Part I - YOUR CODE HERE
     function bendForce = computeBendForce(curveData)
         bendForce = zeros(size(curveData.verts));
-        for i=1:nSamples
-            for j=1:nSamples
-                ej = curveData.edgesR(:,j);
-                ejm1 = curveData.edgesL(:,j);
-                ejl= curveData.edgeLengthsR(:,j);
-                ejm1l= curveData.edgeLengthsL(:,j);
-                w = 0.5* curveData.dualLengths(:,j);
-                coeff = -2/(w*(ejl*ejm1l+dot(ej,ejm1)));
-                kbj = curveData.curvatureBinormals(:,j);
-                if i==j-1
-                    dkb = 2*cross(-ej,kbj)+((kbj*ej.').'*kbj);
-                    bendForce(:,i)=bendForce(:,i)-coeff * dkb;
-                    break;
-                elseif i == j+1
-                    dkb = 2*cross(-ejm1,kbj)-(kbj*ejm1.').'*kbj;
-                    bendForce(:,i)=bendForce(:,i)-coeff * dkb;
-                    break;
-                elseif i==j
-                    dkb = -(2*cross(-ej,kbj)+(kbj*ej.').'*kbj + 2*cross(-ejm1,kbj)-(kbj*ejm1.').'*kbj);
-                    bendForce(:,i)=bendForce(:,i)-coeff * dkb;
-                    break;
-                end
-            end
+        for j=1:(nSamples)
+            curr = mod(j - 1, nSamples) + 1;
+            prev = mod(j - 2, nSamples) + 1;
+            next = mod(j, nSamples) + 1;
+            
+            denom = curveData.edgeLengthsL(curr)*curveData.edgeLengthsR(curr) + dot(curveData.edgesL(:, curr), curveData.edgesR(:, curr));
+            %% prev
+            l = 2*curveData.dualLengths(prev);
+            curvatureBinormal = curveData.curvatureBinormals(:, prev);
+            grad_prev = 2*skew(curveData.edgesR(:, curr)) + curvatureBinormal*curveData.edgesR(:, curr)';
+            grad_prev = grad_prev / denom;    
+            bend_prev = -2*bendModulus/l * grad_prev' * curvatureBinormal;
+
+            %% next
+            l = 2*curveData.dualLengths(next);
+            curvatureBinormal = curveData.curvatureBinormals(:, next);
+            grad_next = 2*skew(curveData.edgesL(:, curr)) - curvatureBinormal*curveData.edgesL(:, curr)';
+            grad_next = grad_next / denom;
+            bend_next = -2*bendModulus/l * grad_next' * curvatureBinormal;
+    
+            %% curr
+            l = 2*curveData.dualLengths(curr);
+            curvatureBinormal = curveData.curvatureBinormals(:, curr);
+    
+            grad_curr = -(grad_prev + grad_next);
+            bend_curr = -2*bendModulus/l * grad_curr' * curvatureBinormal;
+    
+            bendForce(:, curr) = bend_prev + bend_next + bend_curr;
+    
         end
+    
     end
 %%% END HOMEWORK PROBLEM
 

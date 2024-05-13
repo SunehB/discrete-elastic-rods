@@ -6,21 +6,38 @@ static bool isRunning = false;
 static int currentIteration = 0;
 static float alpha = 1.f;
 static float beta = 1.f;
-static float dt = 0.001f;
-static float totaltwist = 0.0f;
-static int nSample = 12;
-static int nIteration = 1;
+static float dt = 1e-3f;
+static float totaltwist = 2 * PI;
+static int nSample = 100;
+static int nIteration = 100;
+static const char * timestep = "1e-3\01e-4\01e-5\01e-6\0";
+static int cur_dt = 0;
 static Curve cur;
 
 void DERcallback() {
-    ImGui::Begin("11Michelle Buckling Curve D");
-    ImGui::InputInt("Set Sample Number", &nSample);
-    if (ImGui::Button("Init Curve")) {
+    ImGui::Begin("Mitchelle Buckling Curve");
+    if(ImGui::InputInt("Set Sample Number", &nSample)){
+        if (!cur.status()){
+            polyscope::warning("Init curve first!");
+            return;
+        }
+        cur.nSamples = nSample;
+    
+    };
+    if (ImGui::Button("Init closed Curve")) {
         if (cur.status()){
             polyscope::warning("Dont init curve twice!");
             return;
         }
-        cur.initcurve(nSample);
+        cur.initcurve();
+    }
+     if (ImGui::Button("Init open Curve")) {
+        if (cur.status()){
+            polyscope::warning("Dont init curve twice!");
+            return;
+        }   
+        cur.closed = false;
+        cur.init_catenary();
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Curve")) {
@@ -31,36 +48,49 @@ void DERcallback() {
         cur.reset();
     }
     if (ImGui::SliderFloat("Set bending modulus (alpha)", &alpha, 0.0f, 1.0f)) {
-         if (!cur.status()){
+        if (!cur.status()){
             polyscope::warning("Init curve first!");
             return;
         }
         cur.set_alpha(alpha);
     }
-    if (ImGui::SliderFloat("Set twisting modulus (beta)", &beta, 0.0f, 1.0f)) {
+    if (ImGui::SliderFloat("Set twisting modulus (beta)", &beta, 1.0f, 100.0f)) {
         if (!cur.status()){
             polyscope::warning("Init curve first!");
             return;
         }
         cur.set_beta(beta);
     }
-    if (ImGui::InputFloat("Set twist angle", &totaltwist, 0.0f, 1.0f)) {
+    if (ImGui::InputFloat("Set twist angle", &totaltwist, 1.0f, 100.0f)) {
          if (!cur.status()){
             polyscope::warning("Init curve first!");
             return;
         }
         cur.set_totaltwist(totaltwist);
     }
-    if (ImGui::SliderFloat("Set time stamp (dt)", &dt, 0.0f, 1.0f)) {
-         if (!cur.status()){
+    if(ImGui::Combo("Time Setp", &cur_dt, timestep, 4)){
+        if (!cur.status()){
             polyscope::warning("Init curve first!");
             return;
+        }
+        switch (cur_dt){
+            case 0:
+                dt = 1e-3f;
+                break;
+            case 1:
+                dt = 1e-4f;
+                break;
+            case 2:
+                dt = 1e-5f;
+                break;
+            case 3:
+                dt = 1e-6f;
+                break;
         }
         cur.set_dt(dt);
     }
     ImGui::InputInt("Set Iteration number", &nIteration);
     if (ImGui::Button("Run Loop")) {
-        // std::cout <<cur.status()<<std::endl;
         if (!cur.status()){
             polyscope::warning("Init curve first!");
             return;
@@ -71,11 +101,9 @@ void DERcallback() {
 
     if (isRunning && currentIteration < nIteration) {
         cur.loop();
-        // std::cout << "loop " << currentIteration << " done" << std::endl;
         currentIteration++;
         if (currentIteration >= nIteration) {
             isRunning = false;
-            // std::cout << "All loops done." << std::endl;
         }
     }
     ImGui::SameLine();
