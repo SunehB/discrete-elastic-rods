@@ -1,1 +1,4 @@
-# discrete-elastic-rods
+# Discrete Elastic Rods
+We aim to implement the Discrete Elastic Rods (DER) model from the 2008 SIGGRAPH paper of the same name. This model has revolutionized the film industry by enabling realistic, large-scale hair simulations. DER provides a  framework for simulating complex, deformable rods, making it a fundamental tool in the computer graphics field. Its ability to accurately model the dynamics of inextensible rods under various physical forces makes DER an essential resource for researchers and practitioners looking to simulate and study the behavior of flexible materials in a realistic manner.
+The primary objectives of this project are to: (1) develop an interactive simulation interface that allows users to specify and manipulate cubic spline curves, observing the resulting torsion and curvature; and (2) implement advanced computational techniques such as the quasistatic optimization and symplectic integration to explore the dynamic and static behaviors of elastic rods under various conditions.
+
